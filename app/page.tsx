@@ -41,18 +41,6 @@ export default async function Home() {
     <main>
       <section className="border-b border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
-          <div className="max-w-4xl">
-            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-              2026년 4월 한국 공모주 일정
-            </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-normal text-neutral-950 dark:text-white sm:text-4xl">
-              청약부터 환불, 상장일까지 놓치기 쉬운 공모주 일정을 한곳에서 확인하세요.
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-neutral-600 dark:text-neutral-300">
-              진행 중인 청약, 임박한 일정, 최근 상장 종목을 우선 노출하고
-              상세 페이지에서 공모가, 주관사, 수요예측 지표를 빠르게 비교할 수 있습니다.
-            </p>
-          </div>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link
               href="/calendar"
