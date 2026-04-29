@@ -15,8 +15,38 @@ export type ListedReturnSnapshot = {
   stockCode: string;
   currentPrice: number;
   offerPrice: number;
+  returnAmount: number;
   returnRate: number;
+  previousClose: number | null;
+  dayChange: number | null;
+  dayChangeRate: number | null;
+  openPrice: number | null;
+  highPrice: number | null;
+  lowPrice: number | null;
+  upperLimitPrice: number | null;
+  lowerLimitPrice: number | null;
+  volume: number | null;
+  tradeAmount: number | null;
+  listedShares: number | null;
+  marketCap: number | null;
   fetchedAt: string;
+  source: "realtime" | "chart";
+};
+
+type RealtimeQuote = {
+  currentPrice: number;
+  previousClose: number | null;
+  dayChange: number | null;
+  dayChangeRate: number | null;
+  openPrice: number | null;
+  highPrice: number | null;
+  lowPrice: number | null;
+  upperLimitPrice: number | null;
+  lowerLimitPrice: number | null;
+  volume: number | null;
+  tradeAmount: number | null;
+  listedShares: number | null;
+  marketCap: number | null;
 };
 
 export async function getListedReturnSnapshot({
@@ -38,23 +68,38 @@ export async function getListedReturnSnapshot({
   }
 
   try {
-    const [currentPrice, chartPrices] = await Promise.all([
-      fetchCurrentPrice(stockCode),
+    const [realtimeQuote, chartPrices] = await Promise.all([
+      fetchRealtimeQuote(stockCode),
       fetchChartPrices(stockCode),
     ]);
-    const effectiveCurrentPrice = currentPrice ?? chartPrices?.latestPrice ?? null;
+    const effectiveCurrentPrice =
+      realtimeQuote?.currentPrice ?? chartPrices?.latestPrice ?? null;
 
     if (!effectiveCurrentPrice) {
       return null;
     }
+    const returnAmount = effectiveCurrentPrice - confirmedOfferPrice;
 
     return {
       stockCode,
       currentPrice: effectiveCurrentPrice,
       offerPrice: confirmedOfferPrice,
-      returnRate:
-        ((effectiveCurrentPrice - confirmedOfferPrice) / confirmedOfferPrice) * 100,
+      returnAmount,
+      returnRate: (returnAmount / confirmedOfferPrice) * 100,
+      previousClose: realtimeQuote?.previousClose ?? null,
+      dayChange: realtimeQuote?.dayChange ?? null,
+      dayChangeRate: realtimeQuote?.dayChangeRate ?? null,
+      openPrice: realtimeQuote?.openPrice ?? null,
+      highPrice: realtimeQuote?.highPrice ?? null,
+      lowPrice: realtimeQuote?.lowPrice ?? null,
+      upperLimitPrice: realtimeQuote?.upperLimitPrice ?? null,
+      lowerLimitPrice: realtimeQuote?.lowerLimitPrice ?? null,
+      volume: realtimeQuote?.volume ?? null,
+      tradeAmount: realtimeQuote?.tradeAmount ?? null,
+      listedShares: realtimeQuote?.listedShares ?? null,
+      marketCap: realtimeQuote?.marketCap ?? null,
       fetchedAt: new Date().toISOString(),
+      source: realtimeQuote ? "realtime" : "chart",
     };
   } catch (error) {
     console.error("[lib/stock-price] Failed to fetch listed return snapshot:", error);
@@ -67,7 +112,7 @@ function extractStockCodeFromSlug(slug: string) {
   return match?.[1]?.toUpperCase() ?? null;
 }
 
-async function fetchCurrentPrice(stockCode: string) {
+async function fetchRealtimeQuote(stockCode: string): Promise<RealtimeQuote | null> {
   const url = new URL(NAVER_REALTIME_URL);
   url.searchParams.set("query", `SERVICE_ITEM:${stockCode}`);
 
@@ -91,13 +136,44 @@ async function fetchCurrentPrice(stockCode: string) {
           nv?: number | string | null;
           sv?: number | string | null;
           pcv?: number | string | null;
+          cv?: number | string | null;
+          cr?: number | string | null;
+          ov?: number | string | null;
+          hv?: number | string | null;
+          lv?: number | string | null;
+          ul?: number | string | null;
+          ll?: number | string | null;
+          aq?: number | string | null;
+          aa?: number | string | null;
+          countOfListedStock?: number | string | null;
         }>;
       }>;
     };
   };
   const item = body.result?.areas?.[0]?.datas?.[0];
+  const currentPrice = toPositiveNumber(item?.nv ?? item?.sv ?? item?.pcv);
 
-  return toPositiveNumber(item?.nv ?? item?.sv ?? item?.pcv);
+  if (!currentPrice) {
+    return null;
+  }
+
+  const listedShares = toPositiveNumber(item?.countOfListedStock);
+
+  return {
+    currentPrice,
+    previousClose: toPositiveNumber(item?.pcv),
+    dayChange: toFiniteNumber(item?.cv),
+    dayChangeRate: toFiniteNumber(item?.cr),
+    openPrice: toPositiveNumber(item?.ov),
+    highPrice: toPositiveNumber(item?.hv),
+    lowPrice: toPositiveNumber(item?.lv),
+    upperLimitPrice: toPositiveNumber(item?.ul),
+    lowerLimitPrice: toPositiveNumber(item?.ll),
+    volume: toPositiveNumber(item?.aq),
+    tradeAmount: toPositiveNumber(item?.aa),
+    listedShares,
+    marketCap: listedShares ? currentPrice * listedShares : null,
+  };
 }
 
 async function fetchChartPrices(stockCode: string) {
@@ -156,4 +232,13 @@ function toPositiveNumber(value: number | string | null | undefined) {
 
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function toFiniteNumber(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
