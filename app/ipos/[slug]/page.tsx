@@ -218,6 +218,10 @@ function ListedMarketOverview({
           </div>
 
           <div className="mt-6">
+            <PriceTrendChart snapshot={snapshot} />
+          </div>
+
+          <div className="mt-6">
             <PriceRangeBar snapshot={snapshot} />
           </div>
 
@@ -262,6 +266,184 @@ function ListedMarketOverview({
         </div>
       </div>
     </section>
+  );
+}
+
+function PriceTrendChart({
+  snapshot,
+}: {
+  snapshot: Awaited<ReturnType<typeof getListedReturnSnapshot>>;
+}) {
+  const chartPrices = snapshot?.chartPrices ?? [];
+  const values = chartPrices.map((point) => point.close);
+  const offerPrice = snapshot?.offerPrice ?? null;
+
+  if (values.length === 0) {
+    return (
+      <div className="flex aspect-[16/7] items-center justify-center rounded-lg border border-neutral-800 bg-neutral-900 text-sm font-medium text-neutral-500">
+        차트 데이터 미확인
+      </div>
+    );
+  }
+
+  const width = 640;
+  const height = 260;
+  const padding = {
+    top: 18,
+    right: 24,
+    bottom: 34,
+    left: 54,
+  };
+  const allValues = offerPrice ? [...values, offerPrice] : values;
+  const rawMin = Math.min(...allValues);
+  const rawMax = Math.max(...allValues);
+  const valuePadding = Math.max((rawMax - rawMin) * 0.12, rawMax * 0.02, 1);
+  const minValue = rawMin - valuePadding;
+  const maxValue = rawMax + valuePadding;
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const xFor = (index: number) =>
+    padding.left +
+    (values.length === 1 ? plotWidth / 2 : (index / (values.length - 1)) * plotWidth);
+  const yFor = (value: number) =>
+    padding.top + ((maxValue - value) / (maxValue - minValue)) * plotHeight;
+  const polylinePoints = chartPrices
+    .map((point, index) => `${xFor(index).toFixed(2)},${yFor(point.close).toFixed(2)}`)
+    .join(" ");
+  const fillPoints =
+    values.length > 1
+      ? `${padding.left},${height - padding.bottom} ${polylinePoints} ${
+          width - padding.right
+        },${height - padding.bottom}`
+      : "";
+  const firstPoint = chartPrices[0];
+  const lastPoint = chartPrices[chartPrices.length - 1];
+  const offerY =
+    offerPrice && offerPrice >= minValue && offerPrice <= maxValue
+      ? yFor(offerPrice)
+      : null;
+
+  return (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-neutral-200">가격 추이</p>
+          <p className="mt-1 text-xs text-neutral-500">
+            {formatChartPointLabel(firstPoint?.date)} - {formatChartPointLabel(lastPoint?.date)}
+          </p>
+        </div>
+        <div className="text-right text-xs text-neutral-500">
+          <p>최고 {formatMoney(rawMax)}</p>
+          <p className="mt-1">최저 {formatMoney(rawMin)}</p>
+        </div>
+      </div>
+
+      <svg
+        className="mt-4 block h-auto w-full"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`${formatChartPointLabel(firstPoint?.date)}부터 ${formatChartPointLabel(
+          lastPoint?.date,
+        )}까지 가격 추이 차트`}
+      >
+        {[0, 1, 2, 3].map((index) => {
+          const y = padding.top + (index / 3) * plotHeight;
+
+          return (
+            <line
+              key={index}
+              x1={padding.left}
+              x2={width - padding.right}
+              y1={y}
+              y2={y}
+              stroke="rgb(38 38 38)"
+              strokeWidth="1"
+            />
+          );
+        })}
+
+        {[rawMin, rawMax].map((value) => (
+          <text
+            key={value}
+            x={padding.left - 10}
+            y={yFor(value) + 4}
+            textAnchor="end"
+            className="fill-neutral-500 text-[11px] font-medium"
+          >
+            {formatCompactPrice(value)}
+          </text>
+        ))}
+
+        {offerY !== null ? (
+          <>
+            <line
+              x1={padding.left}
+              x2={width - padding.right}
+              y1={offerY}
+              y2={offerY}
+              stroke="rgb(16 185 129)"
+              strokeDasharray="5 5"
+              strokeWidth="1.5"
+            />
+            <text
+              x={width - padding.right}
+              y={offerY - 7}
+              textAnchor="end"
+              className="fill-emerald-400 text-[11px] font-semibold"
+            >
+              공모가 {formatCompactPrice(offerPrice)}
+            </text>
+          </>
+        ) : null}
+
+        {fillPoints ? (
+          <polygon points={fillPoints} fill="url(#price-area-gradient)" opacity="0.22" />
+        ) : null}
+        <polyline
+          points={polylinePoints}
+          fill="none"
+          stroke="rgb(244 63 94)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="3"
+        />
+        {values.length === 1 ? (
+          <circle
+            cx={xFor(0)}
+            cy={yFor(values[0])}
+            r="5"
+            className="fill-rose-400"
+          />
+        ) : null}
+        <circle
+          cx={xFor(chartPrices.length - 1)}
+          cy={yFor(lastPoint.close)}
+          r="4.5"
+          className="fill-rose-400"
+        />
+        <text
+          x={padding.left}
+          y={height - 9}
+          className="fill-neutral-500 text-[11px] font-medium"
+        >
+          {formatChartPointLabel(firstPoint?.date)}
+        </text>
+        <text
+          x={width - padding.right}
+          y={height - 9}
+          textAnchor="end"
+          className="fill-neutral-500 text-[11px] font-medium"
+        >
+          {formatChartPointLabel(lastPoint?.date)}
+        </text>
+        <defs>
+          <linearGradient id="price-area-gradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="rgb(244 63 94)" />
+            <stop offset="100%" stopColor="rgb(244 63 94)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
   );
 }
 
@@ -433,6 +615,44 @@ function formatNumber(value?: number | null, fallback = "미정") {
   }
 
   return value.toLocaleString("ko-KR");
+}
+
+function formatCompactPrice(value?: number | null) {
+  if (!value) {
+    return "-";
+  }
+
+  return value.toLocaleString("ko-KR");
+}
+
+function formatChartPointLabel(value?: string) {
+  if (!value) {
+    return "-";
+  }
+
+  if (/^\d{12}$/.test(value)) {
+    return `${Number(value.slice(8, 10))}:${value.slice(10, 12)}`;
+  }
+
+  if (/^\d{8}$/.test(value)) {
+    const month = Number(value.slice(4, 6));
+    const day = Number(value.slice(6, 8));
+
+    return `${month}.${day}`;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Seoul",
+  }).format(date);
 }
 
 function formatSignedRate(value?: number | null) {

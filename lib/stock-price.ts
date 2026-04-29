@@ -4,6 +4,7 @@ const NAVER_REALTIME_URL = "https://polling.finance.naver.com/api/realtime";
 const NAVER_CHART_URL = "https://fchart.stock.naver.com/sise.nhn";
 const FETCH_TIMEOUT_MS = 8_000;
 const RECENT_TRADING_DAYS = 180;
+const INTRADAY_CHART_POINTS = 240;
 
 type ListedReturnInput = {
   slug: string;
@@ -29,8 +30,15 @@ export type ListedReturnSnapshot = {
   tradeAmount: number | null;
   listedShares: number | null;
   marketCap: number | null;
+  chartPrices: ChartPricePoint[];
   fetchedAt: string;
   source: "realtime" | "chart";
+};
+
+export type ChartPricePoint = {
+  date: string;
+  close: number;
+  volume: number | null;
 };
 
 type RealtimeQuote = {
@@ -98,6 +106,7 @@ export async function getListedReturnSnapshot({
       tradeAmount: realtimeQuote?.tradeAmount ?? null,
       listedShares: realtimeQuote?.listedShares ?? null,
       marketCap: realtimeQuote?.marketCap ?? null,
+      chartPrices: syncLatestChartPoint(chartPrices?.items ?? [], effectiveCurrentPrice),
       fetchedAt: new Date().toISOString(),
       source: realtimeQuote ? "realtime" : "chart",
     };
@@ -177,10 +186,44 @@ async function fetchRealtimeQuote(stockCode: string): Promise<RealtimeQuote | nu
 }
 
 async function fetchChartPrices(stockCode: string) {
+  const dailyItems = await fetchChartItems(stockCode, "day", RECENT_TRADING_DAYS);
+
+  if (dailyItems.length >= 2) {
+    const latestItem = dailyItems[dailyItems.length - 1];
+
+    return {
+      latestPrice: latestItem.close,
+      items: dailyItems,
+    };
+  }
+
+  const intradayItems = await fetchChartItems(
+    stockCode,
+    "minute",
+    INTRADAY_CHART_POINTS,
+  );
+  const items = intradayItems.length >= 2 ? intradayItems : dailyItems;
+  const latestItem = items[items.length - 1];
+
+  if (!latestItem) {
+    return null;
+  }
+
+  return {
+    latestPrice: latestItem.close,
+    items,
+  };
+}
+
+async function fetchChartItems(
+  stockCode: string,
+  timeframe: "day" | "minute",
+  count: number,
+): Promise<ChartPricePoint[]> {
   const url = new URL(NAVER_CHART_URL);
   url.searchParams.set("symbol", stockCode);
-  url.searchParams.set("timeframe", "day");
-  url.searchParams.set("count", String(RECENT_TRADING_DAYS));
+  url.searchParams.set("timeframe", timeframe);
+  url.searchParams.set("count", String(count));
   url.searchParams.set("requestType", "0");
 
   const response = await fetch(url, {
@@ -193,36 +236,47 @@ async function fetchChartPrices(stockCode: string) {
   });
 
   if (!response.ok) {
-    return null;
+    return [];
   }
 
   const xml = await response.text();
-  const items = parseChartItems(xml);
-  if (items.length === 0) {
-    return null;
-  }
-
-  const latestItem = items[items.length - 1];
-
-  return {
-    latestPrice: toPositiveNumber(latestItem.close),
-  };
+  return parseChartItems(xml);
 }
 
 function parseChartItems(xml: string) {
   const itemPattern = /<item\s+data="([^"]+)"/g;
-  const items: Array<{ date: string; close: number }> = [];
+  const items: ChartPricePoint[] = [];
 
   for (const match of xml.matchAll(itemPattern)) {
-    const [date, , , , close] = match[1].split("|");
+    const [date, , , , close, volume] = match[1].split("|");
     const parsedClose = toPositiveNumber(close);
 
     if (date && parsedClose) {
-      items.push({ date, close: parsedClose });
+      items.push({
+        date,
+        close: parsedClose,
+        volume: toPositiveNumber(volume),
+      });
     }
   }
 
   return items;
+}
+
+function syncLatestChartPoint(items: ChartPricePoint[], currentPrice: number) {
+  if (items.length === 0) {
+    return [
+      {
+        date: new Date().toISOString(),
+        close: currentPrice,
+        volume: null,
+      },
+    ];
+  }
+
+  return items.map((item, index) =>
+    index === items.length - 1 ? { ...item, close: currentPrice } : item,
+  );
 }
 
 function toPositiveNumber(value: number | string | null | undefined) {
