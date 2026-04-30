@@ -49,5 +49,5 @@ function getThemeSnapshot(): Theme {
 }
 
 function getServerTheme(): Theme {
-  return "dark";
+  return "light";
 }

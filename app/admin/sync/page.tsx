@@ -29,7 +29,7 @@ type AdminSyncPageProps = {
 };
 
 export const metadata: Metadata = {
-  title: "동기화 상태 | 운영자 | 공모주 캘린더",
+  title: "동기화 상태 | 운영자 | 머니캘린더",
   description: "공모주 데이터 동기화 실행 이력과 수동 실행 상태를 확인합니다.",
 };
 

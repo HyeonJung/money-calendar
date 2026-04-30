@@ -10,9 +10,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { IpoCard } from "@/components/ipo-card";
-import { IpoExplorer } from "@/components/ipo-explorer";
 import type { Ipo } from "@/lib/ipos";
-import { getFeaturedIpos, getIpos } from "@/lib/ipos";
+import { getIpos } from "@/lib/ipos";
 import {
   getListedReturnSnapshot,
   type ListedReturnSnapshot,
@@ -22,21 +21,13 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function Home() {
-  const [featuredIpos, allIpos] = await Promise.all([
-    getFeaturedIpos(8),
-    getIpos(),
-  ]);
+  const allIpos = await getIpos();
   const todayIso = getTodayIsoInSeoul();
   const activeIpos = allIpos
     .filter((ipo) => ipo.status === "active")
     .sort((left, right) => compareIsoDates(left.subscriptionEnd, right.subscriptionEnd));
-  const secondaryFeaturedIpos = featuredIpos.filter(
-    (ipo) => ipo.status !== "active",
-  );
   const weekSummary = buildWeekSummary(allIpos, todayIso);
   const listedLeaderboard = await buildListedLeaderboard(allIpos);
-  const primaryListHref = activeIpos.length > 0 ? "#active-ipos" : "#featured-ipos";
-  const primaryListLabel = activeIpos.length > 0 ? "청약중 보기" : "주요 공모주";
   const todayListings = await Promise.all(
     allIpos
       .filter((ipo) => getIsoDate(ipo.listingDate) === todayIso)
@@ -62,13 +53,13 @@ export default async function Home() {
               <CalendarDays size={17} aria-hidden="true" />
               캘린더 보기
             </Link>
-            <a
-              href={primaryListHref}
+            <Link
+              href="/ipos"
               className="inline-flex h-11 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
             >
-              {primaryListLabel}
+              공모주 보기
               <ArrowRight size={17} aria-hidden="true" />
-            </a>
+            </Link>
           </div>
         </div>
       </section>
@@ -81,36 +72,7 @@ export default async function Home() {
 
       {activeIpos.length > 0 ? <ActiveSubscriptionSection ipos={activeIpos} /> : null}
 
-      {secondaryFeaturedIpos.length > 0 ? (
-        <section id="featured-ipos" className="mx-auto max-w-7xl px-4 py-9 sm:px-6 lg:px-8">
-          <div className="mb-5 flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-neutral-950 dark:text-white">
-                지금 확인할 공모주
-              </h2>
-              <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                청약 임박, 상장 임박, 최근 상장 종목을 일정순으로 정리했습니다.
-              </p>
-            </div>
-            <Link
-              href="/calendar"
-              className="hidden h-10 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 sm:inline-flex"
-            >
-              <CalendarDays size={16} aria-hidden="true" />
-              전체 일정
-            </Link>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {secondaryFeaturedIpos.map((ipo) => (
-              <IpoCard key={ipo.id} ipo={ipo} />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       <ListedLeaderboardSection entries={listedLeaderboard} />
-
-      <IpoExplorer ipos={allIpos} todayIso={todayIso} />
     </main>
   );
 }

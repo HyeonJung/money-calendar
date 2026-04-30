@@ -2,7 +2,7 @@ import { CalendarView } from "@/components/calendar-view";
 import { getIpos } from "@/lib/ipos";
 
 export const metadata = {
-  title: "공모주 캘린더 | 공모주 캘린더",
+  title: "공모주 일정 | 머니캘린더",
   description: "한국 공모주의 청약, 환불, 상장 일정을 월간 캘린더로 확인하세요.",
 };
 
@@ -18,7 +18,7 @@ export default async function CalendarPage() {
         <div>
           <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">월간 일정</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-normal text-neutral-950 dark:text-white">
-            공모주 캘린더
+            공모주 일정
           </h1>
         </div>
         <p className="max-w-xl text-sm leading-6 text-neutral-600 dark:text-neutral-400">

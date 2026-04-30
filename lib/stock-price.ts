@@ -128,7 +128,7 @@ async function fetchRealtimeQuote(stockCode: string): Promise<RealtimeQuote | nu
   const response = await fetch(url, {
     headers: {
       accept: "*/*",
-      "user-agent": "Mozilla/5.0 (compatible; korea-ipo-calendar/1.0)",
+      "user-agent": "Mozilla/5.0 (compatible; money-calendar/1.0)",
     },
     cache: "no-store",
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -229,7 +229,7 @@ async function fetchChartItems(
   const response = await fetch(url, {
     headers: {
       accept: "application/xml,text/xml,*/*",
-      "user-agent": "Mozilla/5.0 (compatible; korea-ipo-calendar/1.0)",
+      "user-agent": "Mozilla/5.0 (compatible; money-calendar/1.0)",
     },
     cache: "no-store",
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),

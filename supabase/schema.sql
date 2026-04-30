@@ -46,7 +46,7 @@ for select
 to anon, authenticated
 using (true);
 
-comment on table public.ipos is '한국 공모주 일정 앱용 샘플/운영 공모주 데이터 테이블';
+comment on table public.ipos is '머니캘린더 공모주 일정용 샘플/운영 공모주 데이터 테이블';
 comment on column public.ipos.description is '설명 텍스트. 샘플 데이터인 경우 예시 문구를 포함할 수 있음';
 
 -- Sample seed rows for local/dev preview only.

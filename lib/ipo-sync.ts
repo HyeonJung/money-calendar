@@ -152,7 +152,7 @@ async function fetchPublicHtml(pathOrUrl: string) {
     method: "GET",
     headers: {
       "user-agent":
-        "Mozilla/5.0 (compatible; korea-ipo-calendar/1.0; +https://www.38.co.kr/)",
+        "Mozilla/5.0 (compatible; money-calendar/1.0; +https://www.38.co.kr/)",
       accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
       pragma: "no-cache",

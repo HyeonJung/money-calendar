@@ -76,7 +76,7 @@ function buildIcs(ipo: Ipo, events: ScheduleEvent[]) {
     .map((event) =>
       [
         "BEGIN:VEVENT",
-        `UID:${ipo.slug}-${event.key}@korea-ipo-calendar`,
+        `UID:${ipo.slug}-${event.key}@money-calendar`,
         `DTSTAMP:${now}`,
         `DTSTART;VALUE=DATE:${toCalendarDate(event.date)}`,
         `DTEND;VALUE=DATE:${toCalendarDate(addDays(event.date, 1))}`,
@@ -91,7 +91,7 @@ function buildIcs(ipo: Ipo, events: ScheduleEvent[]) {
     )
     .join("\r\n");
 
-  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//korea-ipo-calendar//KO", body, "END:VCALENDAR"].join("\r\n");
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//money-calendar//KO", body, "END:VCALENDAR"].join("\r\n");
 }
 
 function toCalendarDate(value: string) {

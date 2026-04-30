@@ -26,17 +26,18 @@ type StatusFilter =
   | "listed"
   | "bookmarked";
 
-type SortKey = "subscriptionEnd" | "listingDate" | "companyName";
+type SortKey = "featured" | "subscriptionEnd" | "listingDate" | "companyName";
 
-const BOOKMARK_STORAGE_KEY = "korea-ipo-calendar-bookmarks";
-const BOOKMARK_EVENT_NAME = "korea-ipo-calendar-bookmarks-change";
+const BOOKMARK_STORAGE_KEY = "money-calendar-bookmarks";
+const LEGACY_BOOKMARK_STORAGE_KEY = "korea-ipo-calendar-bookmarks";
+const BOOKMARK_EVENT_NAME = "money-calendar-bookmarks-change";
 
 export function IpoExplorer({ ipos, todayIso }: IpoExplorerProps) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [marketFilter, setMarketFilter] = useState("all");
   const [underwriterFilter, setUnderwriterFilter] = useState("all");
-  const [sortKey, setSortKey] = useState<SortKey>("subscriptionEnd");
+  const [sortKey, setSortKey] = useState<SortKey>("featured");
   const bookmarkSnapshot = useSyncExternalStore(
     subscribeBookmarkStorage,
     readBookmarkSnapshot,
@@ -104,6 +105,10 @@ export function IpoExplorer({ ipos, todayIso }: IpoExplorerProps) {
         return searchableText.includes(normalizedQuery);
       })
       .sort((left, right) => {
+        if (sortKey === "featured") {
+          return compareFeaturedOrder(left, right);
+        }
+
         if (sortKey === "companyName") {
           return left.companyName.localeCompare(right.companyName, "ko-KR");
         }
@@ -211,6 +216,7 @@ export function IpoExplorer({ ipos, todayIso }: IpoExplorerProps) {
             value={sortKey}
             onChange={(value) => setSortKey(value as SortKey)}
             options={[
+              { value: "featured", label: "추천순" },
               { value: "subscriptionEnd", label: "청약마감순" },
               { value: "listingDate", label: "상장일순" },
               { value: "companyName", label: "회사명순" },
@@ -429,13 +435,37 @@ function uniqueSorted(values: string[]) {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right, "ko-KR"));
 }
 
+function compareFeaturedOrder(left: Ipo, right: Ipo) {
+  const statusPriority = {
+    active: 0,
+    upcoming: 1,
+    listed: 2,
+  };
+  const statusDiff = statusPriority[left.status] - statusPriority[right.status];
+
+  if (statusDiff !== 0) {
+    return statusDiff;
+  }
+
+  if (left.status === "listed") {
+    return toIsoDate(right.listingDate).localeCompare(toIsoDate(left.listingDate));
+  }
+
+  return toIsoDate(left.subscriptionStart).localeCompare(toIsoDate(right.subscriptionStart));
+}
+
 function subscribeBookmarkStorage(onStoreChange: () => void) {
   if (typeof window === "undefined") {
     return () => {};
   }
 
   const handleChange = (event: Event) => {
-    if (event instanceof StorageEvent && event.key && event.key !== BOOKMARK_STORAGE_KEY) {
+    if (
+      event instanceof StorageEvent &&
+      event.key &&
+      event.key !== BOOKMARK_STORAGE_KEY &&
+      event.key !== LEGACY_BOOKMARK_STORAGE_KEY
+    ) {
       return;
     }
 
@@ -456,7 +486,11 @@ function readBookmarkSnapshot() {
     return "[]";
   }
 
-  return window.localStorage.getItem(BOOKMARK_STORAGE_KEY) ?? "[]";
+  return (
+    window.localStorage.getItem(BOOKMARK_STORAGE_KEY) ??
+    window.localStorage.getItem(LEGACY_BOOKMARK_STORAGE_KEY) ??
+    "[]"
+  );
 }
 
 function getServerBookmarkSnapshot() {

@@ -38,12 +38,12 @@ export async function generateMetadata({
 
   if (!ipo) {
     return {
-      title: "공모주 상세 | 공모주 캘린더",
+      title: "공모주 상세 | 머니캘린더",
     };
   }
 
   return {
-    title: `${ipo.companyName} | 공모주 캘린더`,
+    title: `${ipo.companyName} | 머니캘린더`,
     description: `${ipo.companyName} 공모주 청약, 환불, 상장 일정을 확인하세요.`,
   };
 }
@@ -71,11 +71,11 @@ export default async function IpoDetailPage({ params }: IpoDetailPageProps) {
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <Link
-        href="/"
+        href="/ipos"
         className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
       >
         <ArrowLeft size={16} aria-hidden="true" />
-        목록으로
+        공모주 목록으로
       </Link>
 
       <section className="mt-5 rounded-lg border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-950 sm:p-6">
