@@ -16,8 +16,33 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://korea-ipo-calendar.vercel.app",
+  ),
   title: "공모주 캘린더",
   description: "한국 공모주 청약, 환불, 상장 일정을 한눈에 확인하세요.",
+  openGraph: {
+    title: "공모주 캘린더",
+    description: "한국 공모주 청약, 환불, 상장 일정을 한눈에 확인하세요.",
+    url: "/",
+    siteName: "공모주 캘린더",
+    locale: "ko_KR",
+    type: "website",
+    images: [
+      {
+        url: "/meta-image.png",
+        width: 1731,
+        height: 909,
+        alt: "공모주 캘린더",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "공모주 캘린더",
+    description: "한국 공모주 청약, 환불, 상장 일정을 한눈에 확인하세요.",
+    images: ["/meta-image.png"],
+  },
   icons: {
     icon: [
       { url: "/favicon.ico" },
