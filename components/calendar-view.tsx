@@ -93,11 +93,14 @@ const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 export function CalendarView({ ipos }: CalendarViewProps) {
   const today = getTodayInSeoul();
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(today));
+  const [selectedDate, setSelectedDate] = useState(() => today);
   const [visibleKinds, setVisibleKinds] = useState<Set<CalendarEvent["kind"]>>(
     () => new Set(EVENT_KIND_ORDER),
   );
   const events = buildCalendarEvents(ipos);
   const filteredEvents = events.filter((event) => visibleKinds.has(event.kind));
+  const monthEvents = filteredEvents.filter((event) => isSameMonth(event.date, currentMonth));
+  const selectedEvents = filteredEvents.filter((event) => isSameDay(event.date, selectedDate));
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const calendarDays = eachDayOfInterval({
@@ -124,7 +127,10 @@ export function CalendarView({ ipos }: CalendarViewProps) {
             <CalendarButton
               label="오늘"
               icon={<CalendarDays size={16} aria-hidden="true" />}
-              onClick={() => setCurrentMonth(startOfMonth(today))}
+              onClick={() => {
+                setCurrentMonth(startOfMonth(today));
+                setSelectedDate(today);
+              }}
             />
             <CalendarButton
               label="다음 달"
@@ -174,7 +180,13 @@ export function CalendarView({ ipos }: CalendarViewProps) {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <MobileEventList
+        events={monthEvents}
+        selectedDate={selectedDate}
+        onSelectDate={setSelectedDate}
+      />
+
+      <div className="hidden overflow-x-auto md:block">
         <div className="min-w-[720px]">
           <div className="grid grid-cols-7 border-b border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900">
             {WEEKDAY_LABELS.map((label) => (
@@ -205,10 +217,14 @@ export function CalendarView({ ipos }: CalendarViewProps) {
                     .join(" ")}
                 >
                   <div className="flex items-center justify-between">
-                    <span
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDate(day)}
                       className={[
                         "inline-flex size-7 items-center justify-center rounded-md text-sm font-semibold",
-                        isToday
+                        isSameDay(day, selectedDate)
+                          ? "bg-neutral-950 text-white dark:bg-white dark:text-neutral-950"
+                          : isToday
                           ? "bg-emerald-600 text-white"
                           : isCurrentMonth
                             ? "text-neutral-900 dark:text-neutral-100"
@@ -216,7 +232,7 @@ export function CalendarView({ ipos }: CalendarViewProps) {
                       ].join(" ")}
                     >
                       {format(day, "d")}
-                    </span>
+                    </button>
                     {dayEvents.length > 0 ? (
                       <span className="text-[11px] font-medium text-neutral-400 dark:text-neutral-500">
                         {dayEvents.length}건
@@ -229,29 +245,22 @@ export function CalendarView({ ipos }: CalendarViewProps) {
                       const meta = EVENT_STYLES[event.kind];
 
                       return (
-                        <Link
+                        <CalendarEventLink
                           key={event.id}
-                          href={`/ipos/${event.slug}`}
+                          event={event}
                           className={`rounded-md border px-2 py-1.5 text-[11px] leading-4 transition-colors ${meta.className}`}
-                        >
-                          <div className="font-semibold">{meta.label}</div>
-                          <div className="mt-0.5 truncate text-[11px] opacity-90">
-                            {event.ipoName}
-                          </div>
-                          {event.managerText ? (
-                            <div className="mt-1 flex min-w-0 items-center gap-1 text-[10px] leading-3 opacity-80">
-                              <Building2 size={10} aria-hidden="true" className="shrink-0" />
-                              <span className="truncate">{event.managerText}</span>
-                            </div>
-                          ) : null}
-                        </Link>
+                        />
                       );
                     })}
 
                     {dayEvents.length > visibleEvents.length ? (
-                      <p className="px-1 text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDate(day)}
+                        className="px-1 text-left text-[11px] font-medium text-neutral-500 transition hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+                      >
                         +{dayEvents.length - visibleEvents.length}개 일정 더보기
-                      </p>
+                      </button>
                     ) : null}
                   </div>
                 </div>
@@ -260,7 +269,130 @@ export function CalendarView({ ipos }: CalendarViewProps) {
           </div>
         </div>
       </div>
+
+      <SelectedDatePanel date={selectedDate} events={selectedEvents} />
     </section>
+  );
+}
+
+function MobileEventList({
+  events,
+  selectedDate,
+  onSelectDate,
+}: {
+  events: CalendarEvent[];
+  selectedDate: Date;
+  onSelectDate: (date: Date) => void;
+}) {
+  const groupedEvents = groupEventsByDate(events);
+
+  return (
+    <div className="divide-y divide-neutral-100 dark:divide-neutral-800 md:hidden">
+      <div className="px-4 py-3 sm:px-5">
+        <p className="text-sm font-semibold text-neutral-950 dark:text-white">날짜별 일정</p>
+      </div>
+      {groupedEvents.length > 0 ? (
+        groupedEvents.map(({ date, events: dateEvents }) => (
+          <button
+            key={date.toISOString()}
+            type="button"
+            onClick={() => onSelectDate(date)}
+            className={[
+              "block w-full px-4 py-3 text-left transition sm:px-5",
+              isSameDay(date, selectedDate)
+                ? "bg-emerald-50 dark:bg-emerald-950/30"
+                : "hover:bg-neutral-50 dark:hover:bg-neutral-900",
+            ].join(" ")}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-neutral-950 dark:text-white">
+                {format(date, "M월 d일 EEEE", { locale: ko })}
+              </p>
+              <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                {dateEvents.length}건
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {dateEvents.slice(0, 4).map((event) => (
+                <span
+                  key={event.id}
+                  className={`rounded-md border px-2 py-1 text-xs font-semibold ${EVENT_STYLES[event.kind].className}`}
+                >
+                  {event.label} · {event.ipoName}
+                </span>
+              ))}
+            </div>
+          </button>
+        ))
+      ) : (
+        <p className="px-4 py-8 text-center text-sm font-medium text-neutral-500 dark:text-neutral-400 sm:px-5">
+          표시할 일정이 없습니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SelectedDatePanel({
+  date,
+  events,
+}: {
+  date: Date;
+  events: CalendarEvent[];
+}) {
+  return (
+    <div className="border-t border-neutral-200 bg-neutral-50 px-4 py-4 dark:border-neutral-800 dark:bg-neutral-900/40 sm:px-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+            선택한 날짜 일정
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-neutral-950 dark:text-white">
+            {format(date, "yyyy년 M월 d일 EEEE", { locale: ko })}
+          </h3>
+        </div>
+        <span className="rounded-md border border-neutral-200 bg-white px-2.5 py-1 text-xs font-semibold text-neutral-600 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-300">
+          {events.length}건
+        </span>
+      </div>
+
+      {events.length > 0 ? (
+        <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {events.map((event) => (
+            <CalendarEventLink
+              key={event.id}
+              event={event}
+              className={`rounded-lg border px-3 py-2.5 text-sm leading-5 transition-colors ${EVENT_STYLES[event.kind].className}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-lg bg-white p-4 text-sm font-medium text-neutral-500 dark:bg-neutral-950 dark:text-neutral-400">
+          표시할 일정이 없습니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CalendarEventLink({
+  event,
+  className,
+}: {
+  event: CalendarEvent;
+  className: string;
+}) {
+  return (
+    <Link href={`/ipos/${event.slug}`} className={className}>
+      <div className="font-semibold">{event.label}</div>
+      <div className="mt-0.5 truncate opacity-90">{event.ipoName}</div>
+      {event.managerText ? (
+        <div className="mt-1 flex min-w-0 items-center gap-1 text-[0.78em] leading-4 opacity-80">
+          <Building2 size={12} aria-hidden="true" className="shrink-0" />
+          <span className="truncate">{event.managerText}</span>
+        </div>
+      ) : null}
+    </Link>
   );
 }
 
@@ -323,6 +455,26 @@ function buildCalendarEvents(ipos: Ipo[]) {
       ].filter(Boolean) as CalendarEvent[];
     })
     .sort((left, right) => left.date.getTime() - right.date.getTime());
+}
+
+function groupEventsByDate(events: CalendarEvent[]) {
+  const grouped = new Map<string, { date: Date; events: CalendarEvent[] }>();
+
+  for (const event of events) {
+    const key = format(event.date, "yyyy-MM-dd");
+    const current = grouped.get(key);
+
+    if (current) {
+      current.events.push(event);
+    } else {
+      grouped.set(key, {
+        date: event.date,
+        events: [event],
+      });
+    }
+  }
+
+  return [...grouped.values()].sort((left, right) => left.date.getTime() - right.date.getTime());
 }
 
 function buildEvent(

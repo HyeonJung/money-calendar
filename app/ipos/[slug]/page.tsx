@@ -7,12 +7,18 @@ import {
   Building2,
   CalendarDays,
   CircleDollarSign,
+  ExternalLink,
+  FileText,
   Landmark,
   ShieldCheck,
   TrendingUp,
 } from "lucide-react";
+import { IpoCard } from "@/components/ipo-card";
+import { ScheduleActions } from "@/components/schedule-actions";
 import { StatusBadge } from "@/components/status-badge";
-import { getIpoBySlug } from "@/lib/ipos";
+import { SubscriptionCalculator } from "@/components/subscription-calculator";
+import { getIpoDocuments, type IpoDocument } from "@/lib/ipo-documents";
+import { getIpoBySlug, getIpos, type Ipo } from "@/lib/ipos";
 import { getListedReturnSnapshot } from "@/lib/stock-price";
 
 type IpoDetailPageProps = {
@@ -50,11 +56,17 @@ export default async function IpoDetailPage({ params }: IpoDetailPageProps) {
     notFound();
   }
 
-  const listedReturn = await getListedReturnSnapshot({
-    slug: ipo.slug,
-    status: ipo.status,
-    confirmedOfferPrice: ipo.confirmedOfferPrice,
-  });
+  const [listedReturn, allIpos, documents] = await Promise.all([
+    getListedReturnSnapshot({
+      slug: ipo.slug,
+      status: ipo.status,
+      confirmedOfferPrice: ipo.confirmedOfferPrice,
+    }),
+    getIpos(),
+    getIpoDocuments(ipo.slug),
+  ]);
+  const todayIso = getTodayIsoInSeoul();
+  const relatedIpos = getRelatedIpos(allIpos, ipo);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -117,6 +129,11 @@ export default async function IpoDetailPage({ params }: IpoDetailPageProps) {
         </div>
       </section>
 
+      <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+        <ScheduleTimeline ipo={ipo} todayIso={todayIso} />
+        <SourceDocuments ipo={ipo} documents={documents} />
+      </div>
+
       {ipo.status === "listed" ? (
         <ListedMarketOverview ipo={ipo} snapshot={listedReturn} />
       ) : (
@@ -168,12 +185,143 @@ export default async function IpoDetailPage({ params }: IpoDetailPageProps) {
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
+            <SubscriptionCalculator ipo={ipo} />
+            <ScheduleActions ipo={ipo} />
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-2">
             <TextList title="투자 포인트" items={ipo.highlights} tone="positive" />
             <TextList title="확인할 리스크" items={ipo.risks} tone="caution" />
           </div>
         </>
       )}
+
+      {relatedIpos.length > 0 ? (
+        <section className="mt-5">
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                함께 볼 공모주
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-neutral-950 dark:text-white">
+                비슷한 일정과 시장
+              </h2>
+            </div>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {relatedIpos.map((item) => (
+              <IpoCard key={item.id} ipo={item} />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </main>
+  );
+}
+
+function ScheduleTimeline({ ipo, todayIso }: { ipo: Ipo; todayIso: string }) {
+  const steps = [
+    { key: "subscription-start", label: "청약 시작", date: ipo.subscriptionStart },
+    { key: "subscription-end", label: "청약 종료", date: ipo.subscriptionEnd },
+    { key: "refund", label: "환불", date: ipo.refundDate },
+    { key: "listing", label: "상장", date: ipo.listingDate },
+  ];
+
+  return (
+    <section className="rounded-lg border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-950">
+      <div className="flex items-center gap-2">
+        <CalendarDays size={18} aria-hidden="true" className="text-emerald-700 dark:text-emerald-400" />
+        <h2 className="text-lg font-semibold text-neutral-950 dark:text-white">상세 일정 타임라인</h2>
+      </div>
+
+      <ol className="mt-5 space-y-4">
+        {steps.map((step, index) => {
+          const state = getTimelineState(step.date, todayIso);
+          const isLast = index === steps.length - 1;
+
+          return (
+            <li key={step.key} className="relative flex gap-3">
+              {!isLast ? (
+                <span className="absolute left-[15px] top-8 h-[calc(100%+0.5rem)] w-px bg-neutral-200 dark:bg-neutral-800" />
+              ) : null}
+              <span
+                className={[
+                  "relative z-10 mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                  state.className,
+                ].join(" ")}
+              >
+                {index + 1}
+              </span>
+              <div className="min-w-0 flex-1 rounded-md bg-neutral-50 px-3 py-2.5 dark:bg-neutral-900">
+                <p className="text-sm font-semibold text-neutral-950 dark:text-neutral-100">
+                  {step.label}
+                </p>
+                <p className="mt-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                  {formatDate(step.date)} · {state.label}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+function SourceDocuments({
+  ipo,
+  documents,
+}: {
+  ipo: Ipo;
+  documents: IpoDocument[];
+}) {
+  const dartSearchUrl = `https://dart.fss.or.kr/dsab007/search.ax?textCrpNM=${encodeURIComponent(
+    ipo.companyName,
+  )}`;
+
+  return (
+    <section className="rounded-lg border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-950">
+      <div className="flex items-center gap-2">
+        <FileText size={18} aria-hidden="true" className="text-emerald-700 dark:text-emerald-400" />
+        <h2 className="text-lg font-semibold text-neutral-950 dark:text-white">근거 문서</h2>
+      </div>
+
+      {documents.length > 0 ? (
+        <ul className="mt-4 space-y-3">
+          {documents.slice(0, 4).map((document) => (
+            <li key={document.id} className="rounded-md bg-neutral-50 p-3 dark:bg-neutral-900">
+              <a
+                href={document.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-start gap-1.5 text-sm font-semibold text-neutral-950 hover:text-emerald-700 dark:text-neutral-100 dark:hover:text-emerald-400"
+              >
+                {document.title}
+                <ExternalLink size={14} aria-hidden="true" className="mt-0.5 shrink-0" />
+              </a>
+              <p className="mt-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                {document.source} · {document.rceptNo} · {formatDateTime(document.fetchedAt)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-4 rounded-md bg-neutral-50 p-4 dark:bg-neutral-900">
+          <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            저장된 DART 문서는 아직 없습니다.
+          </p>
+          <a
+            href={dartSearchUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:border-neutral-700 dark:hover:bg-neutral-900 dark:hover:text-white"
+          >
+            DART에서 검색
+            <ExternalLink size={15} aria-hidden="true" />
+          </a>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -567,6 +715,89 @@ function TextList({
       </ul>
     </section>
   );
+}
+
+function getTodayIsoInSeoul() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function getTimelineState(value: string, todayIso: string) {
+  const isoDate = value.slice(0, 10);
+
+  if (isoDate < todayIso) {
+    return {
+      label: "완료",
+      className:
+        "border-neutral-200 bg-neutral-100 text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400",
+    };
+  }
+
+  if (isoDate === todayIso) {
+    return {
+      label: "오늘",
+      className:
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/60 dark:text-emerald-300",
+    };
+  }
+
+  return {
+    label: "예정",
+    className:
+      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/60 dark:text-amber-300",
+  };
+}
+
+function getRelatedIpos(ipos: Ipo[], currentIpo: Ipo) {
+  return ipos
+    .filter((ipo) => ipo.slug !== currentIpo.slug)
+    .map((ipo) => ({
+      ipo,
+      score:
+        (ipo.market === currentIpo.market ? 3 : 0) +
+        (ipo.sector === currentIpo.sector ? 2 : 0) +
+        getDateProximityScore(ipo.listingDate, currentIpo.listingDate) +
+        getDateProximityScore(ipo.subscriptionStart, currentIpo.subscriptionStart),
+    }))
+    .sort((left, right) => {
+      const scoreDiff = right.score - left.score;
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+
+      return left.ipo.listingDate.localeCompare(right.ipo.listingDate);
+    })
+    .slice(0, 3)
+    .map((entry) => entry.ipo);
+}
+
+function getDateProximityScore(leftValue: string, rightValue: string) {
+  const left = new Date(`${leftValue.slice(0, 10)}T00:00:00+09:00`).getTime();
+  const right = new Date(`${rightValue.slice(0, 10)}T00:00:00+09:00`).getTime();
+
+  if (!Number.isFinite(left) || !Number.isFinite(right)) {
+    return 0;
+  }
+
+  const diffDays = Math.abs(left - right) / 86_400_000;
+
+  if (diffDays <= 7) {
+    return 3;
+  }
+
+  if (diffDays <= 21) {
+    return 2;
+  }
+
+  if (diffDays <= 45) {
+    return 1;
+  }
+
+  return 0;
 }
 
 function formatDate(value: string) {

@@ -5,9 +5,12 @@ import {
   Building2,
   CalendarDays,
   CircleDollarSign,
+  Clock3,
+  ListChecks,
   TrendingUp,
 } from "lucide-react";
 import { IpoCard } from "@/components/ipo-card";
+import { IpoExplorer } from "@/components/ipo-explorer";
 import type { Ipo } from "@/lib/ipos";
 import { getFeaturedIpos, getIpos } from "@/lib/ipos";
 import {
@@ -30,6 +33,8 @@ export default async function Home() {
   const secondaryFeaturedIpos = featuredIpos.filter(
     (ipo) => ipo.status !== "active",
   );
+  const weekSummary = buildWeekSummary(allIpos, todayIso);
+  const listedLeaderboard = await buildListedLeaderboard(allIpos);
   const primaryListHref = activeIpos.length > 0 ? "#active-ipos" : "#featured-ipos";
   const primaryListLabel = activeIpos.length > 0 ? "청약중 보기" : "주요 공모주";
   const todayListings = await Promise.all(
@@ -72,6 +77,8 @@ export default async function Home() {
         <TodayListingSection todayIso={todayIso} listings={todayListings} />
       ) : null}
 
+      <WeeklySummarySection todayIso={todayIso} summary={weekSummary} />
+
       {activeIpos.length > 0 ? <ActiveSubscriptionSection ipos={activeIpos} /> : null}
 
       {secondaryFeaturedIpos.length > 0 ? (
@@ -100,7 +107,128 @@ export default async function Home() {
           </div>
         </section>
       ) : null}
+
+      <ListedLeaderboardSection entries={listedLeaderboard} />
+
+      <IpoExplorer ipos={allIpos} todayIso={todayIso} />
     </main>
+  );
+}
+
+function WeeklySummarySection({
+  todayIso,
+  summary,
+}: {
+  todayIso: string;
+  summary: WeekSummary;
+}) {
+  return (
+    <section className="border-b border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+              {formatDate(todayIso)}
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-neutral-950 dark:text-white">
+              이번 주 핵심 일정
+            </h2>
+          </div>
+          <Link
+            href="/calendar"
+            className="inline-flex h-10 w-fit items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+          >
+            전체 일정
+            <ArrowRight size={16} aria-hidden="true" />
+          </Link>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <WeeklySummaryCard
+            icon={<TrendingUp size={18} aria-hidden="true" />}
+            title="오늘 상장"
+            emptyText="오늘 상장 일정 없음"
+            ipos={summary.todayListings}
+            dateSelector={(ipo) => ipo.listingDate}
+            tone="rose"
+          />
+          <WeeklySummaryCard
+            icon={<Clock3 size={18} aria-hidden="true" />}
+            title="청약 마감 임박"
+            emptyText="이번 주 마감 일정 없음"
+            ipos={summary.closingSoon}
+            dateSelector={(ipo) => ipo.subscriptionEnd}
+            tone="amber"
+          />
+          <WeeklySummaryCard
+            icon={<ListChecks size={18} aria-hidden="true" />}
+            title="이번 주 청약 시작"
+            emptyText="이번 주 시작 일정 없음"
+            ipos={summary.weekStarts}
+            dateSelector={(ipo) => ipo.subscriptionStart}
+            tone="emerald"
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WeeklySummaryCard({
+  icon,
+  title,
+  emptyText,
+  ipos,
+  dateSelector,
+  tone,
+}: {
+  icon: ReactNode;
+  title: string;
+  emptyText: string;
+  ipos: Ipo[];
+  dateSelector: (ipo: Ipo) => string;
+  tone: "emerald" | "amber" | "rose";
+}) {
+  const toneClassName = {
+    emerald:
+      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300",
+    amber:
+      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-300",
+    rose:
+      "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/40 dark:text-rose-300",
+  }[tone];
+
+  return (
+    <article className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none">
+      <div className="flex items-center gap-2">
+        <span className={`inline-flex size-8 items-center justify-center rounded-md border ${toneClassName}`}>
+          {icon}
+        </span>
+        <h3 className="text-base font-semibold text-neutral-950 dark:text-white">{title}</h3>
+      </div>
+
+      {ipos.length > 0 ? (
+        <ul className="mt-4 space-y-3">
+          {ipos.slice(0, 3).map((ipo) => (
+            <li key={ipo.id} className="rounded-md bg-neutral-50 p-3 dark:bg-neutral-900">
+              <Link
+                href={`/ipos/${ipo.slug}`}
+                className="font-semibold text-neutral-950 hover:text-emerald-700 dark:text-neutral-100 dark:hover:text-emerald-400"
+              >
+                {ipo.companyName}
+              </Link>
+              <p className="mt-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                {formatDate(dateSelector(ipo))} · {ipo.leadManager || ipo.underwriters[0] || "주관사 미정"}
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-4 rounded-md bg-neutral-50 p-3 text-sm font-medium text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
+          {emptyText}
+        </p>
+      )}
+    </article>
   );
 }
 
@@ -255,6 +383,137 @@ function TodayListingMetric({
   );
 }
 
+function ListedLeaderboardSection({
+  entries,
+}: {
+  entries: ListedLeaderboardEntry[];
+}) {
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mx-auto max-w-7xl px-4 py-9 sm:px-6 lg:px-8">
+      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+            최근 상장 성과
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-neutral-950 dark:text-white">
+            공모가 대비 수익률 순위
+          </h2>
+        </div>
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          현재가를 확인한 종목 기준
+        </p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        {entries.slice(0, 6).map(({ ipo, snapshot }, index) => {
+          const tone = getReturnTone(snapshot.returnRate);
+          const badgeClassName = {
+            positive:
+              "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/50 dark:text-rose-300",
+            negative:
+              "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/50 dark:text-sky-300",
+            neutral:
+              "border-neutral-200 bg-neutral-100 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300",
+          }[tone];
+
+          return (
+            <article
+              key={ipo.id}
+              className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                    #{index + 1} · {ipo.market}
+                  </p>
+                  <h3 className="mt-2 text-base font-semibold text-neutral-950 dark:text-white">
+                    <Link
+                      href={`/ipos/${ipo.slug}`}
+                      className="hover:text-emerald-700 dark:hover:text-emerald-400"
+                    >
+                      {ipo.companyName}
+                    </Link>
+                  </h3>
+                </div>
+                <span className={`rounded-md border px-2.5 py-1.5 text-sm font-semibold ${badgeClassName}`}>
+                  {formatSignedRate(snapshot.returnRate)}
+                </span>
+              </div>
+              <dl className="mt-4 grid grid-cols-2 gap-3">
+                <TodayListingMetric
+                  icon={<CircleDollarSign size={15} aria-hidden="true" />}
+                  label="공모가"
+                  value={formatMoney(snapshot.offerPrice)}
+                />
+                <TodayListingMetric
+                  icon={<TrendingUp size={15} aria-hidden="true" />}
+                  label="현재가"
+                  value={formatMoney(snapshot.currentPrice)}
+                />
+              </dl>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+type WeekSummary = {
+  todayListings: Ipo[];
+  closingSoon: Ipo[];
+  weekStarts: Ipo[];
+};
+
+type ListedLeaderboardEntry = {
+  ipo: Ipo;
+  snapshot: NonNullable<ListedReturnSnapshot>;
+};
+
+function buildWeekSummary(ipos: Ipo[], todayIso: string): WeekSummary {
+  const weekEndIso = addDaysToIsoDate(todayIso, 6);
+
+  return {
+    todayListings: ipos
+      .filter((ipo) => getIsoDate(ipo.listingDate) === todayIso)
+      .sort((left, right) => left.companyName.localeCompare(right.companyName, "ko-KR")),
+    closingSoon: ipos
+      .filter((ipo) => isIsoDateInRange(ipo.subscriptionEnd, todayIso, weekEndIso))
+      .sort((left, right) => compareIsoDates(left.subscriptionEnd, right.subscriptionEnd)),
+    weekStarts: ipos
+      .filter((ipo) => isIsoDateInRange(ipo.subscriptionStart, todayIso, weekEndIso))
+      .sort((left, right) => compareIsoDates(left.subscriptionStart, right.subscriptionStart)),
+  };
+}
+
+async function buildListedLeaderboard(ipos: Ipo[]): Promise<ListedLeaderboardEntry[]> {
+  const listedIpos = ipos
+    .filter((ipo) => ipo.status === "listed")
+    .sort((left, right) => compareIsoDates(right.listingDate, left.listingDate))
+    .slice(0, 12);
+  const snapshots = await Promise.all(
+    listedIpos.map(async (ipo) => ({
+      ipo,
+      snapshot: await getListedReturnSnapshot({
+        slug: ipo.slug,
+        status: ipo.status,
+        confirmedOfferPrice: ipo.confirmedOfferPrice,
+      }),
+    })),
+  );
+
+  return snapshots
+    .filter(
+      (entry): entry is ListedLeaderboardEntry =>
+        entry.snapshot !== null && entry.snapshot.returnRate !== null,
+    )
+    .sort((left, right) => right.snapshot.returnRate - left.snapshot.returnRate);
+}
+
 function getTodayIsoInSeoul() {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -274,6 +533,23 @@ function getIsoDate(value: string) {
 
 function compareIsoDates(left: string, right: string) {
   return getIsoDate(left).localeCompare(getIsoDate(right));
+}
+
+function isIsoDateInRange(value: string, startIso: string, endIso: string) {
+  const dateIso = getIsoDate(value);
+  return startIso <= dateIso && dateIso <= endIso;
+}
+
+function addDaysToIsoDate(value: string, days: number) {
+  const date = new Date(`${getIsoDate(value)}T00:00:00+09:00`);
+  date.setDate(date.getDate() + days);
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 function formatDate(value: string) {

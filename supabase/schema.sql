@@ -374,3 +374,28 @@ comment on column public.ipo_analysis.source_confidence is '근거 충실도 기
 comment on column public.ipos.description is '상세 화면용 짧은 요약 문구. DART 근거 기반 분석 원문 저장소는 ipo_analysis를 사용';
 comment on column public.ipos.highlights is '화면 카드/상세용 투자 포인트 요약 배열. 근거 추적 데이터는 ipo_analysis/ipo_documents를 사용';
 comment on column public.ipos.risks is '화면 카드/상세용 리스크 요약 배열. 근거 추적 데이터는 ipo_analysis/ipo_documents를 사용';
+
+create table if not exists public.sync_runs (
+  id uuid primary key default gen_random_uuid(),
+  source text not null default 'cron',
+  status text not null check (status in ('success', 'failed', 'unauthorized')),
+  dry_run boolean not null default false,
+  started_at timestamptz not null,
+  finished_at timestamptz not null,
+  duration_ms integer not null default 0 check (duration_ms >= 0),
+  message text not null default '',
+  error_code text,
+  counts jsonb,
+  warnings text[] not null default '{}',
+  errors text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+create index if not exists sync_runs_started_at_idx on public.sync_runs (started_at desc);
+create index if not exists sync_runs_status_idx on public.sync_runs (status);
+create index if not exists sync_runs_source_idx on public.sync_runs (source);
+
+alter table public.sync_runs enable row level security;
+
+comment on table public.sync_runs is '공모주 데이터 동기화 실행 이력. 쓰기와 조회는 service role 등 운영 권한 전제';
+comment on column public.sync_runs.counts is '동기화 중 수집/정규화/저장된 건수 요약';
