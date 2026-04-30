@@ -70,7 +70,12 @@ export default async function IpoDetailPage({ params }: IpoDetailPageProps) {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={ipo.status} />
+              <StatusBadge
+                status={ipo.status}
+                subscriptionStart={ipo.subscriptionStart}
+                subscriptionEnd={ipo.subscriptionEnd}
+                listingDate={ipo.listingDate}
+              />
               <span className="rounded-md border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-600 dark:border-neutral-800 dark:text-neutral-400">
                 {ipo.market}
               </span>

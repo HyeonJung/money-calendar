@@ -83,7 +83,14 @@ export function IpoCard({ ipo }: IpoCardProps) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{market}</p>
-            {view.status ? <StatusBadge status={view.status} /> : null}
+            {view.status ? (
+              <StatusBadge
+                status={view.status}
+                subscriptionStart={view.subscriptionStart ?? view.subscriptionStartDate}
+                subscriptionEnd={view.subscriptionEnd ?? view.subscriptionEndDate}
+                listingDate={view.listingDate}
+              />
+            ) : null}
           </div>
           <h3 className="mt-2 text-lg font-semibold tracking-tight text-neutral-950 dark:text-white">
             <Link href={detailHref} className="hover:text-emerald-700 dark:hover:text-emerald-400">

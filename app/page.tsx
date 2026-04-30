@@ -24,6 +24,14 @@ export default async function Home() {
     getIpos(),
   ]);
   const todayIso = getTodayIsoInSeoul();
+  const activeIpos = allIpos
+    .filter((ipo) => ipo.status === "active")
+    .sort((left, right) => compareIsoDates(left.subscriptionEnd, right.subscriptionEnd));
+  const secondaryFeaturedIpos = featuredIpos.filter(
+    (ipo) => ipo.status !== "active",
+  );
+  const primaryListHref = activeIpos.length > 0 ? "#active-ipos" : "#featured-ipos";
+  const primaryListLabel = activeIpos.length > 0 ? "청약중 보기" : "주요 공모주";
   const todayListings = await Promise.all(
     allIpos
       .filter((ipo) => getIsoDate(ipo.listingDate) === todayIso)
@@ -50,10 +58,10 @@ export default async function Home() {
               캘린더 보기
             </Link>
             <a
-              href="#featured-ipos"
+              href={primaryListHref}
               className="inline-flex h-11 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
             >
-              주요 공모주
+              {primaryListLabel}
               <ArrowRight size={17} aria-hidden="true" />
             </a>
           </div>
@@ -64,31 +72,62 @@ export default async function Home() {
         <TodayListingSection todayIso={todayIso} listings={todayListings} />
       ) : null}
 
-      <section id="featured-ipos" className="mx-auto max-w-7xl px-4 py-9 sm:px-6 lg:px-8">
-        <div className="mb-5 flex items-end justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-neutral-950 dark:text-white">
-              지금 확인할 공모주
-            </h2>
-            <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-              청약 중, 청약 임박, 최근 상장 종목을 일정순으로 정리했습니다.
-            </p>
+      {activeIpos.length > 0 ? <ActiveSubscriptionSection ipos={activeIpos} /> : null}
+
+      {secondaryFeaturedIpos.length > 0 ? (
+        <section id="featured-ipos" className="mx-auto max-w-7xl px-4 py-9 sm:px-6 lg:px-8">
+          <div className="mb-5 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-neutral-950 dark:text-white">
+                지금 확인할 공모주
+              </h2>
+              <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                청약 임박, 상장 임박, 최근 상장 종목을 일정순으로 정리했습니다.
+              </p>
+            </div>
+            <Link
+              href="/calendar"
+              className="hidden h-10 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 sm:inline-flex"
+            >
+              <CalendarDays size={16} aria-hidden="true" />
+              전체 일정
+            </Link>
           </div>
-          <Link
-            href="/calendar"
-            className="hidden h-10 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 sm:inline-flex"
-          >
-            <CalendarDays size={16} aria-hidden="true" />
-            전체 일정
-          </Link>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {secondaryFeaturedIpos.map((ipo) => (
+              <IpoCard key={ipo.id} ipo={ipo} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </main>
+  );
+}
+
+function ActiveSubscriptionSection({ ipos }: { ipos: Ipo[] }) {
+  return (
+    <section id="active-ipos" className="border-b border-neutral-200 bg-emerald-50/60 dark:border-neutral-800 dark:bg-emerald-950/20">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+              지금 청약 가능
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-neutral-950 dark:text-white">
+              청약 진행중인 공모주
+            </h2>
+          </div>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            청약 마감일이 가까운 순서로 정리했습니다.
+          </p>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          {featuredIpos.map((ipo) => (
+          {ipos.map((ipo) => (
             <IpoCard key={ipo.id} ipo={ipo} />
           ))}
         </div>
-      </section>
-    </main>
+      </div>
+    </section>
   );
 }
 
@@ -231,6 +270,10 @@ function getTodayIsoInSeoul() {
 
 function getIsoDate(value: string) {
   return value.slice(0, 10);
+}
+
+function compareIsoDates(left: string, right: string) {
+  return getIsoDate(left).localeCompare(getIsoDate(right));
 }
 
 function formatDate(value: string) {
