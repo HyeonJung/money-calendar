@@ -18,6 +18,19 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "공모주 캘린더",
   description: "한국 공모주 청약, 환불, 상장 일정을 한눈에 확인하세요.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/favicons/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicons/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicons/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicons/favicon-48.png", sizes: "48x48", type: "image/png" },
+      { url: "/favicons/favicon-64.png", sizes: "64x64", type: "image/png" },
+      { url: "/favicons/favicon-128.png", sizes: "128x128", type: "image/png" },
+      { url: "/favicons/favicon-256.png", sizes: "256x256", type: "image/png" },
+    ],
+    apple: [{ url: "/favicons/apple-touch-icon.png", sizes: "180x180" }],
+  },
 };
 
 export default function RootLayout({

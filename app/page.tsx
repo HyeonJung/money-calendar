@@ -482,10 +482,18 @@ function buildWeekSummary(ipos: Ipo[], todayIso: string): WeekSummary {
       .filter((ipo) => getIsoDate(ipo.listingDate) === todayIso)
       .sort((left, right) => left.companyName.localeCompare(right.companyName, "ko-KR")),
     closingSoon: ipos
-      .filter((ipo) => isIsoDateInRange(ipo.subscriptionEnd, todayIso, weekEndIso))
+      .filter(
+        (ipo) =>
+          isSubscriptionActive(ipo, todayIso) &&
+          isIsoDateInRange(ipo.subscriptionEnd, todayIso, weekEndIso),
+      )
       .sort((left, right) => compareIsoDates(left.subscriptionEnd, right.subscriptionEnd)),
     weekStarts: ipos
-      .filter((ipo) => isIsoDateInRange(ipo.subscriptionStart, todayIso, weekEndIso))
+      .filter(
+        (ipo) =>
+          !isSubscriptionActive(ipo, todayIso) &&
+          isIsoDateInRange(ipo.subscriptionStart, todayIso, weekEndIso),
+      )
       .sort((left, right) => compareIsoDates(left.subscriptionStart, right.subscriptionStart)),
   };
 }
@@ -538,6 +546,13 @@ function compareIsoDates(left: string, right: string) {
 function isIsoDateInRange(value: string, startIso: string, endIso: string) {
   const dateIso = getIsoDate(value);
   return startIso <= dateIso && dateIso <= endIso;
+}
+
+function isSubscriptionActive(ipo: Ipo, todayIso: string) {
+  return (
+    getIsoDate(ipo.subscriptionStart) <= todayIso &&
+    todayIso <= getIsoDate(ipo.subscriptionEnd)
+  );
 }
 
 function addDaysToIsoDate(value: string, days: number) {

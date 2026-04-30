@@ -7,6 +7,7 @@ Vercel 배포와 Supabase 연동을 전제로 만든 한국 공모주 일정 앱
 - `/`: 진행 중, 임박, 최근 상장 공모주 요약
 - `/calendar`: 청약 시작/종료, 환불일, 상장일 월간 캘린더
 - `/ipos/[slug]`: 공모가, 주관사, 수요예측 지표, 투자 포인트, 리스크 상세
+- `/admin/sync`: Google 로그인과 DB 권한 테이블로 보호되는 운영자용 동기화 상태 페이지
 
 ## 실행
 
@@ -35,6 +36,8 @@ CRON_SECRET=
 
 `OPENDART_API_KEY`는 Open DART API 호출에 사용하는 서버 전용 키입니다. 공시 원문 메타데이터 수집과 회사정보/투자포인트 생성의 근거 확보 용도로만 사용하고, 클라이언트에 노출하지 않아야 합니다.
 
+운영자 페이지는 Supabase Auth의 Google provider를 사용합니다. Supabase Dashboard에서 Google OAuth를 활성화하고, redirect URL에 로컬과 배포 도메인의 `/auth/callback`을 추가해 주세요.
+
 ## 데이터 구조
 
 기존 `ipos` 테이블은 화면 렌더링 중심의 공모주 일정 데이터 저장소입니다. 특히 `ipos.description`, `ipos.highlights`, `ipos.risks`는 상세/카드 UI에서 바로 쓰는 요약 필드로 계속 유지합니다.
@@ -43,12 +46,25 @@ CRON_SECRET=
 
 - `ipo_documents`: DART 등 외부 원문 근거 추적용 문서 메타데이터. `ipo_slug`, `source`, `rcept_no`, `title`, `url`, `fetched_at`를 저장합니다.
 - `ipo_analysis`: 회사 개요/비즈니스 모델/투자 포인트/리스크 포인트/근거 메모를 저장하는 요약 테이블. `investment_points`, `risk_points`, `source_notes`는 `text[]` 배열입니다.
+- `admin_users`: 운영자 Google 이메일과 권한(`admin`, `viewer`)을 저장합니다.
+- `sync_runs`: cron/수동 동기화 실행 이력, 경고, 오류, 수집 건수 요약을 저장합니다.
 
 이 구조를 쓰면 앱은 기존 `ipos` 요약 필드를 그대로 사용하면서도, 서버 배치나 관리자 작업에서 DART 기반 근거와 분석 결과를 별도로 축적할 수 있습니다.
 
 ### RLS 정책
 
 `ipos`, `ipo_documents`, `ipo_analysis`는 모두 공개 읽기(`anon`, `authenticated`)를 허용합니다.
+
+`admin_users`, `sync_runs`는 공개 읽기 정책을 열지 않습니다. 운영자 페이지와 cron/API 경로는 서버 환경의 `SUPABASE_SERVICE_ROLE_KEY`로만 조회/쓰기합니다.
+
+초기 운영자 계정은 Supabase SQL Editor에서 직접 추가합니다.
+
+```sql
+insert into public.admin_users (email, role)
+values ('your-google-email@example.com', 'admin')
+on conflict (email) do update
+set role = excluded.role, is_active = true, updated_at = now();
+```
 
 쓰기 정책은 별도로 열지 않습니다. Supabase에서는 `service role`이 RLS를 우회하므로, insert/update/delete는 서버 환경의 `SUPABASE_SERVICE_ROLE_KEY`를 사용하는 배치/cron/API 경로만 전제로 합니다.
 
