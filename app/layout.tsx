@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
-import { CalendarDays, Home, Landmark, LineChart } from "lucide-react";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppHeader } from "@/components/app-header";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -79,45 +77,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full bg-stone-50 text-neutral-950 dark:bg-neutral-950 dark:text-neutral-100">
         <div className="min-h-dvh">
-          <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
-            <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-              <Link href="/" className="flex items-center gap-2 font-semibold dark:text-white">
-                <span className="flex size-9 items-center justify-center rounded-lg bg-emerald-600 text-white">
-                  <LineChart size={18} aria-hidden="true" />
-                </span>
-                <span className="text-base">머니캘린더</span>
-              </Link>
-              <div className="flex items-center gap-2">
-                <nav className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-1 text-sm font-medium text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
-                  <Link
-                    href="/"
-                    aria-label="홈"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 hover:bg-white hover:text-neutral-950 dark:hover:bg-neutral-800 dark:hover:text-white sm:px-3"
-                  >
-                    <Home size={16} aria-hidden="true" />
-                    <span className="hidden sm:inline">홈</span>
-                  </Link>
-                  <Link
-                    href="/ipos"
-                    aria-label="공모주"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 hover:bg-white hover:text-neutral-950 dark:hover:bg-neutral-800 dark:hover:text-white sm:px-3"
-                  >
-                    <Landmark size={16} aria-hidden="true" />
-                    <span className="hidden sm:inline">공모주</span>
-                  </Link>
-                  <Link
-                    href="/calendar"
-                    aria-label="캘린더"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 hover:bg-white hover:text-neutral-950 dark:hover:bg-neutral-800 dark:hover:text-white sm:px-3"
-                  >
-                    <CalendarDays size={16} aria-hidden="true" />
-                    <span className="hidden sm:inline">캘린더</span>
-                  </Link>
-                </nav>
-                <ThemeToggle />
-              </div>
-            </div>
-          </header>
+          <AppHeader />
           {children}
         </div>
       </body>

@@ -1,12 +1,13 @@
 # 머니캘린더
 
-Vercel 배포와 Supabase 연동을 전제로 만든 돈 되는 일정 캘린더입니다. 현재는 한국 공모주 일정을 중심으로 제공합니다.
+Vercel 배포와 Supabase 연동을 전제로 만든 돈 되는 일정 캘린더입니다. 현재는 한국 공모주 일정과 공개 소스 기반 최신 핫딜을 제공합니다.
 
 ## 주요 화면
 
 - `/`: 진행 중, 임박, 최근 상장 공모주 요약
 - `/ipos`: 공모주 검색, 필터, 정렬, 관심 공모주
 - `/calendar`: 청약 시작/종료, 환불일, 상장일 월간 캘린더
+- `/hotdeals`: 공개 소스에서 수집한 최신 핫딜 목록
 - `/ipos/[slug]`: 공모가, 주관사, 수요예측 지표, 투자 포인트, 리스크 상세
 - `/admin/sync`: Google 로그인과 DB 권한 테이블로 보호되는 운영자용 동기화 상태 페이지
 
@@ -46,6 +47,7 @@ CRON_SECRET=
 회사의 근거 문서와 분석 요약은 아래 보조 테이블로 분리합니다.
 
 - `ipo_documents`: DART 등 외부 원문 근거 추적용 문서 메타데이터. `ipo_slug`, `source`, `rcept_no`, `title`, `url`, `fetched_at`를 저장합니다.
+- `hot_deals`: 공개 핫딜 소스에서 수집한 최신 할인 정보. `external_id`, `title`, `deal_url`, `image_url`, `published_at`, `collected_at`, `like_count`, `comment_count`를 저장합니다.
 - `ipo_analysis`: 회사 개요/비즈니스 모델/투자 포인트/리스크 포인트/근거 메모를 저장하는 요약 테이블. `investment_points`, `risk_points`, `source_notes`는 `text[]` 배열입니다.
 - `admin_users`: 운영자 Google 이메일과 권한(`admin`, `viewer`)을 저장합니다.
 - `sync_runs`: cron/수동 동기화 실행 이력, 경고, 오류, 수집 건수 요약을 저장합니다.
@@ -54,7 +56,7 @@ CRON_SECRET=
 
 ### RLS 정책
 
-`ipos`, `ipo_documents`, `ipo_analysis`는 모두 공개 읽기(`anon`, `authenticated`)를 허용합니다.
+`ipos`, `ipo_documents`, `ipo_analysis`는 모두 공개 읽기(`anon`, `authenticated`)를 허용합니다. `hot_deals`는 `status = 'active'`인 항목만 공개 읽기를 허용합니다.
 
 `admin_users`, `sync_runs`는 공개 읽기 정책을 열지 않습니다. 운영자 페이지와 cron/API 경로는 서버 환경의 `SUPABASE_SERVICE_ROLE_KEY`로만 조회/쓰기합니다.
 
@@ -73,6 +75,8 @@ set role = excluded.role, is_active = true, updated_at = now();
 
 `GET /api/cron/sync-ipos`는 Vercel Cron이 매일 자동 호출하는 동기화 엔드포인트입니다. `vercel.json`에는 UTC 기준 `30 23 * * *`가 설정되어 있으며, 한국 시간으로는 매일 오전 8시 30분(KST)입니다. 장 시작 전에 당일 공모주 일정을 반영하려는 목적의 스케줄입니다.
 
+`GET /api/cron/sync-hotdeals`는 30분마다 공개 핫딜 데이터를 수집하는 엔드포인트입니다. 현재 MVP는 FM코리아 핫딜 게시판, 아카라이브 핫딜 채널 API, 어미새 쇼핑정보 위젯을 읽어 `hot_deals` 테이블에 `external_id` 기준으로 upsert합니다.
+
 동기화 로직은 38커뮤니케이션 공개 공모주 청약일정 HTML을 수집하고, 상세 페이지에서 시장구분, 업종, 환불일, 상장일, 대표주관사 등을 보강한 뒤 `ipos` 테이블에 `slug` 기준으로 upsert합니다. 외부 페이지 구조 변경이나 네트워크 실패가 있으면 앱 화면을 깨지 않고 JSON 실패 응답으로 떨어집니다.
 
 `CRON_SECRET`이 설정되어 있으면 다음 두 방식 중 하나로 인증해야 합니다.
@@ -90,10 +94,18 @@ Vercel production 환경 변수에 `CRON_SECRET`을 넣어 두면 cron 호출은
 curl -X GET "http://localhost:3000/api/cron/sync-ipos?secret=$CRON_SECRET"
 ```
 
+```bash
+curl -X GET "http://localhost:3000/api/cron/sync-hotdeals?secret=$CRON_SECRET"
+```
+
 쓰기 없이 수집 결과만 확인하려면 `dryRun=1`을 붙입니다.
 
 ```bash
 curl -X GET "http://localhost:3000/api/cron/sync-ipos?dryRun=1&secret=$CRON_SECRET"
+```
+
+```bash
+curl -X GET "http://localhost:3000/api/cron/sync-hotdeals?dryRun=1&secret=$CRON_SECRET"
 ```
 
 ```bash

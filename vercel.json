@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/sync-ipos",
       "schedule": "30 23 * * *"
+    },
+    {
+      "path": "/api/cron/sync-hotdeals",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

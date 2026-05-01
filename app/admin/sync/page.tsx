@@ -14,6 +14,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { getAdminAccess, type AdminAccess } from "@/lib/admin-auth";
+import { syncHotDealsFromPublicSources } from "@/lib/hotdeal-sync";
 import { syncIposFromPublicSources } from "@/lib/ipo-sync";
 import {
   getSyncRunDashboard,
@@ -28,9 +29,11 @@ type AdminSyncPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
+type ManualSyncSource = "ipos" | "hotdeals";
+
 export const metadata: Metadata = {
   title: "동기화 상태 | 운영자 | 머니캘린더",
-  description: "공모주 데이터 동기화 실행 이력과 수동 실행 상태를 확인합니다.",
+  description: "공모주와 핫딜 데이터 동기화 실행 이력과 수동 실행 상태를 확인합니다.",
 };
 
 export const dynamic = "force-dynamic";
@@ -60,7 +63,11 @@ export default async function AdminSyncPage({ searchParams }: AdminSyncPageProps
 
   return (
     <AdminShell access={access}>
-      <ActionNotice value={getParam(params, "run")} dryRun={getParam(params, "dryRun")} />
+      <ActionNotice
+        value={getParam(params, "run")}
+        dryRun={getParam(params, "dryRun")}
+        source={readManualSyncSource(getParam(params, "source"))}
+      />
       <AdminHero access={access} dashboard={dashboard} />
 
       {dashboard.ok ? (
@@ -80,16 +87,20 @@ async function runManualSyncAction(formData: FormData) {
 
   const access = await getAdminAccess();
   const dryRun = formData.get("dryRun") === "1";
+  const source = readManualSyncSource(formData.get("source"));
 
   if (access.state !== "authorized" || !access.canRunSync) {
     redirect("/admin/sync?run=forbidden");
   }
 
   const startedAt = new Date();
-  let redirectPath = `/admin/sync?run=failed&dryRun=${dryRun ? "1" : "0"}`;
+  let redirectPath = `/admin/sync?run=failed&dryRun=${dryRun ? "1" : "0"}&source=${source}`;
 
   try {
-    const result = await syncIposFromPublicSources({ dryRun });
+    const result =
+      source === "hotdeals"
+        ? await syncHotDealsFromPublicSources({ dryRun })
+        : await syncIposFromPublicSources({ dryRun });
     const finishedAt = new Date();
     await recordSyncRun({
       status: result.ok ? "success" : "failed",
@@ -105,11 +116,13 @@ async function runManualSyncAction(formData: FormData) {
 
     redirectPath = `/admin/sync?run=${result.ok ? "success" : "failed"}&dryRun=${
       result.dryRun ? "1" : "0"
-    }`;
+    }&source=${source}`;
   } catch (error) {
     const finishedAt = new Date();
     const message =
-      error instanceof Error ? error.message : "Unknown error while syncing IPO data.";
+      error instanceof Error
+        ? error.message
+        : `Unknown error while syncing ${getManualSyncSourceLabel(source)} data.`;
 
     await recordSyncRun({
       status: "failed",
@@ -146,6 +159,12 @@ function AdminShell({
           </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/admin"
+            className="inline-flex h-9 items-center rounded-md border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-neutral-50 hover:text-neutral-950 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-white"
+          >
+            핫딜 관리
+          </Link>
           {access.user ? (
             <span className="inline-flex h-9 items-center rounded-md border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-700 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-300">
               {access.user.email}
@@ -316,41 +335,85 @@ function SyncActionPanel({
 }) {
   return (
     <section className="mt-5 rounded-lg border border-neutral-200 bg-white p-5 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
         <div>
           <h2 className="text-lg font-semibold text-neutral-950 dark:text-white">수동 동기화</h2>
           <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
             {access.canRunSync
-              ? "Dry run으로 점검하거나 실제 DB upsert를 실행할 수 있습니다."
+              ? "공모주와 핫딜을 각각 Dry run으로 점검하거나 실제 DB 저장을 실행할 수 있습니다."
               : "viewer 권한은 이력 조회만 가능합니다."}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <form action={runManualSyncAction}>
-            <input type="hidden" name="dryRun" value="1" />
-            <button
-              type="submit"
-              disabled={!access.canRunSync}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
-            >
-              <RefreshCw size={16} aria-hidden="true" />
-              Dry run
-            </button>
-          </form>
-          <form action={runManualSyncAction}>
-            <input type="hidden" name="dryRun" value="0" />
-            <button
-              type="submit"
-              disabled={!access.canRunSync}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <Play size={16} aria-hidden="true" />
-              실제 동기화
-            </button>
-          </form>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <ManualSyncCard
+            source="ipos"
+            title="공모주 동기화"
+            description="공모주 일정, 상세 정보, 상태를 공개 소스 기준으로 갱신합니다."
+            canRunSync={access.canRunSync}
+          />
+          <ManualSyncCard
+            source="hotdeals"
+            title="핫딜 동기화"
+            description="등록 1시간 이내 핫딜만 수집하고 같은 상품 주소는 건너뜁니다."
+            canRunSync={access.canRunSync}
+          />
         </div>
       </div>
     </section>
+  );
+}
+
+function ManualSyncCard({
+  source,
+  title,
+  description,
+  canRunSync,
+}: {
+  source: ManualSyncSource;
+  title: string;
+  description: string;
+  canRunSync: boolean;
+}) {
+  return (
+    <article className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900/60">
+      <div className="flex items-start gap-3">
+        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+          <Database size={17} aria-hidden="true" />
+        </span>
+        <div>
+          <h3 className="text-base font-semibold text-neutral-950 dark:text-white">{title}</h3>
+          <p className="mt-1 text-sm leading-6 text-neutral-600 dark:text-neutral-400">
+            {description}
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <form action={runManualSyncAction}>
+          <input type="hidden" name="source" value={source} />
+          <input type="hidden" name="dryRun" value="1" />
+          <button
+            type="submit"
+            disabled={!canRunSync}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:hover:bg-neutral-800"
+          >
+            <RefreshCw size={16} aria-hidden="true" />
+            Dry run
+          </button>
+        </form>
+        <form action={runManualSyncAction}>
+          <input type="hidden" name="source" value={source} />
+          <input type="hidden" name="dryRun" value="0" />
+          <button
+            type="submit"
+            disabled={!canRunSync}
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <Play size={16} aria-hidden="true" />
+            실제 동기화
+          </button>
+        </form>
+      </div>
+    </article>
   );
 }
 
@@ -533,16 +596,26 @@ function StatusPill({ status }: { status: SyncRunStatus }) {
   );
 }
 
-function ActionNotice({ value, dryRun }: { value?: string; dryRun?: string }) {
+function ActionNotice({
+  value,
+  dryRun,
+  source,
+}: {
+  value?: string;
+  dryRun?: string;
+  source: ManualSyncSource;
+}) {
   if (!value) {
     return null;
   }
 
   const isSuccess = value === "success";
   const isForbidden = value === "forbidden";
+  const sourceLabel = getManualSyncSourceLabel(source);
+  const actionLabel = dryRun === "1" ? "Dry run" : "동기화";
   const text = {
-    success: `${dryRun === "1" ? "Dry run" : "동기화"} 실행이 완료되었습니다.`,
-    failed: `${dryRun === "1" ? "Dry run" : "동기화"} 실행에 실패했습니다. 실행 이력을 확인해 주세요.`,
+    success: `${sourceLabel} ${actionLabel} 실행이 완료되었습니다.`,
+    failed: `${sourceLabel} ${actionLabel} 실행에 실패했습니다. 실행 이력을 확인해 주세요.`,
     forbidden: "동기화를 실행할 권한이 없습니다.",
   }[value];
 
@@ -622,6 +695,14 @@ function getStatusTone(status: SyncRunStatus) {
 
 function getTriggerTypeLabel(type: SyncRunTriggerType) {
   return type === "manual" ? "수동" : "cron";
+}
+
+function readManualSyncSource(value: FormDataEntryValue | string | null | undefined): ManualSyncSource {
+  return value === "hotdeals" ? "hotdeals" : "ipos";
+}
+
+function getManualSyncSourceLabel(source: ManualSyncSource) {
+  return source === "hotdeals" ? "핫딜" : "공모주";
 }
 
 function formatCounts(counts: Record<string, unknown> | null) {

@@ -1,6 +1,5 @@
 import "server-only";
 
-import type { IpoSyncResult } from "./ipo-sync";
 import { createSupabaseServiceRoleClient } from "./supabase-server";
 
 export type SyncRunStatus = "success" | "failed" | "unauthorized";
@@ -48,6 +47,13 @@ export type SyncRunDashboard =
       };
     };
 
+export type SyncRunLogResult = {
+  source?: string;
+  counts?: Record<string, unknown>;
+  warnings?: string[];
+  errors?: string[];
+};
+
 type SyncRunRow = {
   id: string;
   source: string | null;
@@ -72,7 +78,7 @@ export type RecordSyncRunInput = {
   startedAt: Date;
   finishedAt: Date;
   message: string;
-  result?: IpoSyncResult;
+  result?: SyncRunLogResult;
   errorCode?: string | null;
   triggerType: SyncRunTriggerType;
   actorEmail?: string | null;

@@ -1,0 +1,65 @@
+<svg width="403" height="265" viewBox="0 0 403 265" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bag" x1="220" y1="82" x2="323" y2="211" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#4F46E5"/>
+    </linearGradient>
+    <linearGradient id="cart" x1="88" y1="145" x2="203" y2="217" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="tag" x1="303" y1="108" x2="365" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF3A8"/>
+      <stop offset="1" stop-color="#FFD166"/>
+    </linearGradient>
+    <linearGradient id="percent" x1="323" y1="62" x2="390" y2="130" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF7A8A"/>
+      <stop offset="1" stop-color="#FF3F6C"/>
+    </linearGradient>
+    <filter id="shadow" x="40" y="57" width="329" height="183" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#6D28D9" flood-opacity="0.16"/>
+    </filter>
+    <filter id="soft" x="0" y="0" width="403" height="265" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="0.4"/>
+    </filter>
+  </defs>
+
+  <rect width="403" height="265" fill="white"/>
+  <g filter="url(#soft)">
+    <path d="M22 113.5C22 54.5 80 29 133 38C166.5 43.7 179 57.5 215.5 45.5C287 22 373 57 384 124.5C398 210.5 304 243.5 211.5 226C150 214.4 134 238.5 84.5 210.5C45 188.1 22 157 22 113.5Z" fill="#F3E8FF"/>
+    <path d="M45 118C45 71 88 54.2 129 61.1C162 66.7 173.1 82.2 212.5 68.2C270.8 47.5 350.6 68.3 361.8 130C372.4 188.8 309.6 219.5 220 207.4C152.5 198.3 126.6 219.5 87.4 196.3C61.9 181.3 45 150.5 45 118Z" fill="#F7EDFF"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path d="M220 107C220 91 233 78 249 78H292C308 78 321 91 321 107V199C321 211 311 221 299 221H242C230 221 220 211 220 199V107Z" fill="url(#bag)"/>
+    <path d="M249 82V64C249 46.3 263.3 32 281 32C298.7 32 313 46.3 313 64V82" stroke="#6D5DFB" stroke-width="7" stroke-linecap="round"/>
+    <path d="M264 82V62C264 52.6 271.6 45 281 45C290.4 45 298 52.6 298 62V82" stroke="#C4B5FD" stroke-width="5" stroke-linecap="round"/>
+    <path d="M246 140C253 153 262 159 276 159C290 159 300 151 305 139" stroke="white" stroke-width="7" stroke-linecap="round"/>
+
+    <path d="M102 139H189L175 191H112L102 139Z" fill="url(#cart)"/>
+    <path d="M91 121H108L116 191H178" stroke="#6D5DFB" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M116 151H184M122 172H178M134 140V190M158 140V190" stroke="#D8B4FE" stroke-width="4" stroke-linecap="round"/>
+    <rect x="126" y="123" width="39" height="36" rx="6" fill="#FF8A4C"/>
+    <rect x="151" y="116" width="34" height="43" rx="7" fill="#FFB86B"/>
+    <circle cx="123" cy="207" r="10" fill="#7C3AED"/>
+    <circle cx="169" cy="207" r="10" fill="#7C3AED"/>
+    <circle cx="123" cy="207" r="4" fill="#C4B5FD"/>
+    <circle cx="169" cy="207" r="4" fill="#C4B5FD"/>
+
+    <path d="M303 112L347 124C353 126 357 132 356 138L348 182C347 190 339 194 332 190L290 167C285 164 283 158 286 153L309 117C310 114 306 113 303 112Z" fill="url(#tag)"/>
+    <circle cx="332" cy="137" r="7" fill="#FF4778"/>
+    <path d="M315 169L338 145" stroke="#FF4778" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="314" cy="145" r="7" fill="#FF4778"/>
+    <circle cx="338" cy="169" r="7" fill="#FF4778"/>
+
+    <circle cx="350" cy="83" r="33" fill="url(#percent)"/>
+    <path d="M336 94L363 68" stroke="white" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="336" cy="70" r="6" fill="white"/>
+    <circle cx="362" cy="94" r="6" fill="white"/>
+  </g>
+
+  <path d="M70 93L76 108L91 114L76 120L70 135L64 120L49 114L64 108L70 93Z" fill="#A78BFA"/>
+  <path d="M170 53L174 64L185 68L174 73L170 84L165 73L154 68L165 64L170 53Z" fill="#C084FC"/>
+  <path d="M329 24L335 36L348 40L336 47L332 59L326 47L313 43L325 36L329 24Z" fill="#FBCFE8"/>
+  <circle cx="299" cy="31" r="5" fill="#F9A8D4"/>
+</svg>
