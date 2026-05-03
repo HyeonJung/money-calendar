@@ -57,6 +57,40 @@ export type AdminHotDealListResult =
       message: string;
     };
 
+export type AdminHotDealMetrics = {
+  totalCount: number;
+  activeCount: number;
+  expiredCount: number;
+  hiddenCount: number;
+  collectedTodayCount: number;
+  collectedLast24HoursCount: number;
+  manualCreatedTodayCount: number;
+  activeWithoutImageCount: number;
+  activeWithoutPriceCount: number;
+  latestCollectedAt: string | null;
+  sourceBreakdown: Array<{
+    label: string;
+    count: number;
+  }>;
+  categoryBreakdown: Array<{
+    label: string;
+    count: number;
+  }>;
+};
+
+export type AdminHotDealMetricsResult =
+  | {
+      ok: true;
+      metrics: AdminHotDealMetrics;
+      message: string;
+    }
+  | {
+      ok: false;
+      metrics: null;
+      reason: "missing-env" | "schema-required" | "query-failed";
+      message: string;
+    };
+
 type HotDealRow = {
   id: string;
   external_id: string;
@@ -76,6 +110,12 @@ type HotDealRow = {
   status?: HotDealStatus | null;
   created_at?: string;
   updated_at?: string;
+};
+
+type HotDealMetricRow = {
+  source_name: string | null;
+  category: string | null;
+  collected_at: string | null;
 };
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -234,6 +274,210 @@ export async function getAdminHotDeals(limit = 80): Promise<AdminHotDealListResu
     deals: ((data ?? []) as HotDealRow[]).map(mapRowToAdminHotDeal),
     message: "핫딜 목록을 조회했습니다.",
   };
+}
+
+export async function getAdminHotDealMetrics(): Promise<AdminHotDealMetricsResult> {
+  const client = createSupabaseServiceRoleClient();
+
+  if (!client) {
+    return {
+      ok: false,
+      metrics: null,
+      reason: "missing-env",
+      message: "SUPABASE_SERVICE_ROLE_KEY가 없어 핫딜 운영 지표를 조회할 수 없습니다.",
+    };
+  }
+
+  const serviceClient = client;
+  const now = new Date();
+  const { start: todayStart, end: todayEnd } = getSeoulDayRange(now);
+  const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const [
+      totalCount,
+      activeCount,
+      expiredCount,
+      hiddenCount,
+      collectedTodayCount,
+      collectedLast24HoursCount,
+      manualCreatedTodayCount,
+      activeWithoutImageCount,
+      activeWithoutPriceCount,
+      latestCollectedAt,
+      breakdownResult,
+    ] = await Promise.all([
+      countHotDeals(),
+      countHotDeals({ status: "active" }),
+      countHotDeals({ status: "expired" }),
+      countHotDeals({ status: "hidden" }),
+      countHotDeals({ collectedFrom: todayStart, collectedTo: todayEnd }),
+      countHotDeals({ collectedFrom: last24Hours }),
+      countHotDeals({
+        sourceName: "운영자 등록",
+        createdFrom: todayStart,
+        createdTo: todayEnd,
+      }),
+      countHotDeals({ status: "active", missingImage: true }),
+      countHotDeals({ status: "active", missingPrice: true }),
+      getLatestCollectedAt(),
+      getBreakdownRows(),
+    ]);
+
+    if (!breakdownResult.ok) {
+      return {
+        ok: false,
+        metrics: null,
+        reason: breakdownResult.reason,
+        message: breakdownResult.message,
+      };
+    }
+
+    return {
+      ok: true,
+      message: "핫딜 운영 지표를 조회했습니다.",
+      metrics: {
+        totalCount,
+        activeCount,
+        expiredCount,
+        hiddenCount,
+        collectedTodayCount,
+        collectedLast24HoursCount,
+        manualCreatedTodayCount,
+        activeWithoutImageCount,
+        activeWithoutPriceCount,
+        latestCollectedAt,
+        sourceBreakdown: buildBreakdown(
+          breakdownResult.rows.map((row) => row.source_name ?? "미분류"),
+        ),
+        categoryBreakdown: buildBreakdown(
+          breakdownResult.rows.map((row) => row.category ?? "미분류"),
+        ),
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown hot deal metrics error.";
+    const reason =
+      message.includes("hot_deals") || message.includes("schema cache")
+        ? "schema-required"
+        : "query-failed";
+
+    return {
+      ok: false,
+      metrics: null,
+      reason,
+      message:
+        reason === "schema-required"
+          ? "hot_deals 테이블이 아직 DB에 적용되지 않았습니다."
+          : `핫딜 운영 지표를 조회하지 못했습니다: ${message}`,
+    };
+  }
+
+  async function countHotDeals(filters: {
+    status?: HotDealStatus;
+    sourceName?: string;
+    collectedFrom?: string;
+    collectedTo?: string;
+    createdFrom?: string;
+    createdTo?: string;
+    missingImage?: boolean;
+    missingPrice?: boolean;
+  } = {}) {
+    let query = serviceClient.from("hot_deals").select("id", { count: "exact", head: true });
+
+    if (filters.status) {
+      query = query.eq("status", filters.status);
+    }
+
+    if (filters.sourceName) {
+      query = query.eq("source_name", filters.sourceName);
+    }
+
+    if (filters.collectedFrom) {
+      query = query.gte("collected_at", filters.collectedFrom);
+    }
+
+    if (filters.collectedTo) {
+      query = query.lt("collected_at", filters.collectedTo);
+    }
+
+    if (filters.createdFrom) {
+      query = query.gte("created_at", filters.createdFrom);
+    }
+
+    if (filters.createdTo) {
+      query = query.lt("created_at", filters.createdTo);
+    }
+
+    if (filters.missingImage) {
+      query = query.is("image_url", null);
+    }
+
+    if (filters.missingPrice) {
+      query = query.is("price_text", null);
+    }
+
+    const { count, error } = await query;
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return count ?? 0;
+  }
+
+  async function getLatestCollectedAt() {
+    const { data, error } = await serviceClient
+      .from("hot_deals")
+      .select("collected_at")
+      .order("collected_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return typeof data?.collected_at === "string" ? data.collected_at : null;
+  }
+
+  async function getBreakdownRows(): Promise<
+    | {
+        ok: true;
+        rows: HotDealMetricRow[];
+      }
+    | {
+        ok: false;
+        reason: "schema-required" | "query-failed";
+        message: string;
+      }
+  > {
+    const { data, error } = await serviceClient
+      .from("hot_deals")
+      .select("source_name, category, collected_at")
+      .order("collected_at", { ascending: false })
+      .limit(500);
+
+    if (error) {
+      const reason =
+        error.message.includes("hot_deals") || error.message.includes("schema cache")
+          ? "schema-required"
+          : "query-failed";
+
+      return {
+        ok: false,
+        reason,
+        message:
+          reason === "schema-required"
+            ? "hot_deals 테이블이 아직 DB에 적용되지 않았습니다."
+            : error.message,
+      };
+    }
+
+    return {
+      ok: true,
+      rows: (data ?? []) as HotDealMetricRow[],
+    };
+  }
 }
 
 export async function createManualHotDeal(input: HotDealMutationInput, actorEmail: string) {
@@ -468,6 +712,37 @@ function normalizeHttpUrl(value: string) {
 function isCoupangUrl(url: URL) {
   const hostname = url.hostname.toLowerCase();
   return hostname === "coupang.com" || hostname.endsWith(".coupang.com");
+}
+
+function getSeoulDayRange(date: Date) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const [year, month, day] = formatter.format(date).split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day, -9, 0, 0));
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+  return {
+    start: start.toISOString(),
+    end: end.toISOString(),
+  };
+}
+
+function buildBreakdown(labels: string[]) {
+  const counts = new Map<string, number>();
+
+  labels.forEach((label) => {
+    const normalized = label.trim() || "미분류";
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+  });
+
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, "ko-KR"))
+    .slice(0, 5);
 }
 
 function normalizeOptionalHttpUrl(value?: string | null) {

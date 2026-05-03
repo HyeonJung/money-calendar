@@ -4,10 +4,14 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  Activity,
   AlertCircle,
   BadgePercent,
+  Clock3,
   Database,
   ExternalLink,
+  ImageOff,
+  Layers3,
   LinkIcon,
   LogIn,
   Pencil,
@@ -22,11 +26,18 @@ import {
   createManualHotDeal,
   deleteHotDeal,
   getAdminHotDeals,
+  getAdminHotDealMetrics,
   updateManualHotDeal,
   type AdminHotDeal,
+  type AdminHotDealMetricsResult,
   type HotDealMutationInput,
   type HotDealStatus,
 } from "@/lib/hot-deals";
+import {
+  getSyncRunDashboard,
+  type SyncRun,
+  type SyncRunDashboard,
+} from "@/lib/sync-runs";
 
 type AdminPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -60,12 +71,20 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     );
   }
 
-  const hotDeals = await getAdminHotDeals(100);
+  const [hotDeals, hotDealMetrics, syncDashboard] = await Promise.all([
+    getAdminHotDeals(100),
+    getAdminHotDealMetrics(),
+    getSyncRunDashboard(30),
+  ]);
 
   return (
     <AdminPageShell access={access}>
       <ActionNotice value={getParam(params, "hotdeal")} />
-      <AdminOverview hotDeals={hotDeals} />
+      <AdminOverview
+        hotDeals={hotDeals}
+        hotDealMetrics={hotDealMetrics}
+        syncDashboard={syncDashboard}
+      />
       <CreateHotDealPanel canEdit={access.canRunSync} />
       {hotDeals.ok ? (
         <HotDealsManagementTable deals={hotDeals.deals} canEdit={access.canRunSync} />
@@ -262,35 +281,126 @@ function AccessBlocked({
   );
 }
 
-function AdminOverview({ hotDeals }: { hotDeals: Awaited<ReturnType<typeof getAdminHotDeals>> }) {
-  const activeCount = hotDeals.ok
+function AdminOverview({
+  hotDeals,
+  hotDealMetrics,
+  syncDashboard,
+}: {
+  hotDeals: Awaited<ReturnType<typeof getAdminHotDeals>>;
+  hotDealMetrics: AdminHotDealMetricsResult;
+  syncDashboard: SyncRunDashboard;
+}) {
+  const metrics = hotDealMetrics.ok ? hotDealMetrics.metrics : null;
+  const fallbackActiveCount = hotDeals.ok
     ? hotDeals.deals.filter((deal) => deal.status === "active").length
     : 0;
-  const hiddenCount = hotDeals.ok
+  const fallbackHiddenCount = hotDeals.ok
     ? hotDeals.deals.filter((deal) => deal.status !== "active").length
     : 0;
+  const syncSummary = buildHotDealSyncSummary(syncDashboard);
+  const activeCount = metrics?.activeCount ?? fallbackActiveCount;
+  const hiddenCount = metrics ? metrics.expiredCount + metrics.hiddenCount : fallbackHiddenCount;
 
   return (
-    <section className="grid gap-4 md:grid-cols-3">
-      <MetricCard
-        icon={<BadgePercent size={18} aria-hidden="true" />}
-        label="총 핫딜"
-        value={hotDeals.ok ? `${hotDeals.deals.length.toLocaleString("ko-KR")}건` : "조회 실패"}
-        detail={hotDeals.message}
-      />
-      <MetricCard
-        icon={<ExternalLink size={18} aria-hidden="true" />}
-        label="노출 중"
-        value={`${activeCount.toLocaleString("ko-KR")}건`}
-        detail="status = active"
-      />
-      <MetricCard
-        icon={<Database size={18} aria-hidden="true" />}
-        label="비노출"
-        value={`${hiddenCount.toLocaleString("ko-KR")}건`}
-        detail="expired 또는 hidden"
-      />
-    </section>
+    <>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          icon={<BadgePercent size={18} aria-hidden="true" />}
+          label="오늘 수집"
+          value={metrics ? `${formatNumber(metrics.collectedTodayCount)}건` : "조회 실패"}
+          detail={
+            metrics
+              ? `최근 24시간 ${formatNumber(metrics.collectedLast24HoursCount)}건 · 수동 ${formatNumber(metrics.manualCreatedTodayCount)}건`
+              : hotDealMetrics.message
+          }
+          tone="success"
+        />
+        <MetricCard
+          icon={<ExternalLink size={18} aria-hidden="true" />}
+          label="노출 중"
+          value={`${formatNumber(activeCount)}건`}
+          detail={`비노출 ${formatNumber(hiddenCount)}건 · 총 ${formatNumber(
+            metrics?.totalCount ?? (hotDeals.ok ? hotDeals.deals.length : 0),
+          )}건`}
+          tone="neutral"
+        />
+        <MetricCard
+          icon={<RefreshCw size={18} aria-hidden="true" />}
+          label="최근 핫딜 동기화"
+          value={syncSummary.latest ? getSyncStatusLabel(syncSummary.latest.status) : "이력 없음"}
+          detail={
+            syncSummary.latest
+              ? `${formatDateTime(syncSummary.latest.startedAt)} · 성공률 ${syncSummary.successRateLabel}`
+              : syncDashboard.ok
+                ? "핫딜 동기화 이력이 없습니다."
+                : syncDashboard.message
+          }
+          tone={syncSummary.latest ? getMetricToneByStatus(syncSummary.latest.status) : "neutral"}
+        />
+        <MetricCard
+          icon={<Activity size={18} aria-hidden="true" />}
+          label="중복 스킵"
+          value={`${formatNumber(syncSummary.recentDuplicateSkipped)}건`}
+          detail={
+            syncSummary.latest
+              ? `최근 10회 기준 · 마지막 저장 ${formatNumber(syncSummary.latestUpserted)}건`
+              : "최근 핫딜 동기화 기준"
+          }
+          tone="warning"
+        />
+      </section>
+
+      <section className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_1fr_1fr]">
+        <DashboardPanel
+          icon={<Clock3 size={18} aria-hidden="true" />}
+          title="동기화 상태"
+          description={syncSummary.latest?.message ?? "최근 핫딜 동기화 메시지가 없습니다."}
+        >
+          <DashboardFact label="마지막 실행" value={syncSummary.latest ? formatDateTime(syncSummary.latest.startedAt) : "-"} />
+          <DashboardFact label="마지막 실패" value={syncSummary.latestFailure ? formatDateTime(syncSummary.latestFailure.startedAt) : "없음"} />
+          <DashboardFact label="마지막 수집/저장" value={`${formatNumber(syncSummary.latestFetched)} / ${formatNumber(syncSummary.latestUpserted)}건`} />
+          <DashboardFact label="경고/오류" value={`${formatNumber(syncSummary.warningCount)} / ${formatNumber(syncSummary.errorCount)}건`} />
+        </DashboardPanel>
+
+        <DashboardPanel
+          icon={<Layers3 size={18} aria-hidden="true" />}
+          title="수집 소스"
+          description="최근 저장된 핫딜 기준 상위 소스입니다."
+        >
+          {metrics?.sourceBreakdown.length ? (
+            <BreakdownList
+              items={metrics.sourceBreakdown}
+              total={metrics.sourceBreakdown.reduce((total, item) => total + item.count, 0)}
+            />
+          ) : (
+            <EmptyDashboardText text={metrics ? "소스 데이터가 없습니다." : hotDealMetrics.message} />
+          )}
+        </DashboardPanel>
+
+        <DashboardPanel
+          icon={<ImageOff size={18} aria-hidden="true" />}
+          title="품질 체크"
+          description="노출 중인 핫딜 중 보완이 필요한 항목입니다."
+        >
+          <DashboardFact
+            label="이미지 없음"
+            value={metrics ? `${formatNumber(metrics.activeWithoutImageCount)}건` : "-"}
+          />
+          <DashboardFact
+            label="가격 없음"
+            value={metrics ? `${formatNumber(metrics.activeWithoutPriceCount)}건` : "-"}
+          />
+          <DashboardFact
+            label="마지막 수집"
+            value={metrics?.latestCollectedAt ? formatDateTime(metrics.latestCollectedAt) : "-"}
+          />
+          <DashboardFact
+            label="카테고리 상위"
+            value={metrics?.categoryBreakdown[0]?.label ?? "-"}
+          />
+        </DashboardPanel>
+      </section>
+    </>
   );
 }
 
@@ -549,21 +659,35 @@ function TextField({
   );
 }
 
+type MetricTone = "success" | "warning" | "danger" | "neutral";
+
 function MetricCard({
   icon,
   label,
   value,
   detail,
+  tone = "neutral",
 }: {
   icon: ReactNode;
   label: string;
   value: string;
   detail: string;
+  tone?: MetricTone;
 }) {
+  const toneClassName = {
+    success:
+      "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
+    warning:
+      "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
+    danger: "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300",
+    neutral:
+      "bg-neutral-100 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300",
+  }[tone];
+
   return (
     <article className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none">
       <div className="flex items-center gap-2">
-        <span className="inline-flex size-8 items-center justify-center rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+        <span className={`inline-flex size-8 items-center justify-center rounded-md ${toneClassName}`}>
           {icon}
         </span>
         <p className="text-sm font-semibold text-neutral-500 dark:text-neutral-400">{label}</p>
@@ -573,6 +697,91 @@ function MetricCard({
         {detail}
       </p>
     </article>
+  );
+}
+
+function DashboardPanel({
+  icon,
+  title,
+  description,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <article className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none">
+      <div className="flex items-start gap-3">
+        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-neutral-100 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-neutral-950 dark:text-white">{title}</h2>
+          <p className="mt-1 line-clamp-2 text-sm leading-6 text-neutral-500 dark:text-neutral-400">
+            {description}
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2">{children}</div>
+    </article>
+  );
+}
+
+function DashboardFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md bg-neutral-50 px-3 py-2 dark:bg-neutral-900/70">
+      <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+        {label}
+      </span>
+      <span className="max-w-[60%] truncate text-right text-sm font-semibold text-neutral-950 dark:text-white">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function BreakdownList({
+  items,
+  total,
+}: {
+  items: Array<{ label: string; count: number }>;
+  total: number;
+}) {
+  return (
+    <div className="grid gap-2">
+      {items.map((item) => {
+        const ratio = total > 0 ? Math.round((item.count / total) * 100) : 0;
+
+        return (
+          <div key={item.label} className="grid gap-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="truncate text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+                {item.label}
+              </span>
+              <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                {formatNumber(item.count)}건
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-900">
+              <div
+                className="h-full rounded-full bg-emerald-500"
+                style={{ width: `${Math.max(4, ratio)}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EmptyDashboardText({ text }: { text: string }) {
+  return (
+    <p className="rounded-md bg-neutral-50 px-3 py-3 text-sm leading-6 text-neutral-500 dark:bg-neutral-900/70 dark:text-neutral-400">
+      {text}
+    </p>
   );
 }
 
@@ -662,6 +871,55 @@ function readHotDealForm(formData: FormData): HotDealMutationInput {
 
 function readStatus(value: FormDataEntryValue | null): HotDealStatus {
   return value === "expired" || value === "hidden" ? value : "active";
+}
+
+function buildHotDealSyncSummary(syncDashboard: SyncRunDashboard) {
+  const hotDealRuns = syncDashboard.ok
+    ? syncDashboard.runs.filter((run) => isHotDealSyncRun(run))
+    : [];
+  const recentRuns = hotDealRuns.slice(0, 10);
+  const successCount = recentRuns.filter((run) => run.status === "success").length;
+  const latest = hotDealRuns[0] ?? null;
+
+  return {
+    latest,
+    latestFailure: hotDealRuns.find((run) => run.status === "failed") ?? null,
+    successRateLabel:
+      recentRuns.length > 0 ? `${Math.round((successCount / recentRuns.length) * 100)}%` : "-",
+    recentDuplicateSkipped: recentRuns.reduce(
+      (total, run) => total + getRunCount(run, "duplicateSkipped"),
+      0,
+    ),
+    latestFetched: latest ? getRunCount(latest, "itemsFetched") : 0,
+    latestUpserted: latest ? getRunCount(latest, "upserted") : 0,
+    warningCount: recentRuns.reduce((total, run) => total + run.warnings.length, 0),
+    errorCount: recentRuns.reduce((total, run) => total + run.errors.length, 0),
+  };
+}
+
+function isHotDealSyncRun(run: SyncRun) {
+  return run.source.includes("핫딜") || Boolean(run.counts && "duplicateSkipped" in run.counts);
+}
+
+function getRunCount(run: SyncRun, key: string) {
+  const value = run.counts?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function getSyncStatusLabel(status: SyncRun["status"]) {
+  return {
+    success: "성공",
+    failed: "실패",
+    unauthorized: "인증 실패",
+  }[status];
+}
+
+function getMetricToneByStatus(status: SyncRun["status"]): MetricTone {
+  return status === "success" ? "success" : status === "failed" ? "danger" : "warning";
+}
+
+function formatNumber(value: number) {
+  return value.toLocaleString("ko-KR");
 }
 
 function getParam(
