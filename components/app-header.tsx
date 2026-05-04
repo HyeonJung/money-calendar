@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BadgePercent, Bell, CalendarDays, Home, Landmark, LineChart } from "lucide-react";
+import { Bell, CalendarDays, Home, Landmark, LineChart } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const navItems = [
   { href: "/", label: "홈", icon: Home },
   { href: "/ipos", label: "공모주", icon: Landmark },
   { href: "/calendar", label: "캘린더", icon: CalendarDays },
-  { href: "/hotdeals", label: "핫딜", icon: BadgePercent },
+  // 핫딜 메뉴는 운영 재정비 전까지 노출하지 않습니다.
+  // { href: "/hotdeals", label: "핫딜", icon: BadgePercent },
 ] as const;
 
 export function AppHeader() {

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 
+import { expireOldHotDeals } from "./hot-deals";
 import { createSupabaseServiceRoleClient } from "./supabase-server";
 
 const FETCH_TIMEOUT_MS = 15_000;
@@ -48,6 +49,7 @@ export type HotDealSyncCounts = {
   itemsNormalized: number;
   skipped: number;
   duplicateSkipped: number;
+  expired: number;
   upserted: number;
 };
 
@@ -105,6 +107,7 @@ function createEmptyCounts(): HotDealSyncCounts {
     itemsNormalized: 0,
     skipped: 0,
     duplicateSkipped: 0,
+    expired: 0,
     upserted: 0,
   };
 }
@@ -155,23 +158,38 @@ export async function syncHotDealsFromPublicSources({
       result.counts.duplicateSkipped += beforeExistingDuplicateFilter - items.length;
     }
 
+    const expirationResult = await expireOldHotDeals({ dryRun });
+    if (expirationResult.ok) {
+      result.counts.expired = expirationResult.expiredCount;
+    } else if (expirationResult.reason !== "missing-env" || client) {
+      result.warnings.push(expirationResult.message);
+    }
+
     result.counts.itemsNormalized = items.length;
     result.items = items;
 
     if (items.length === 0) {
-      result.ok = collected.sourcesFetched > 0;
-      result.message =
+      result.ok = collected.sourcesFetched > 0 || result.counts.expired > 0;
+      const baseMessage =
         collected.sourcesFetched > 0
           ? result.counts.duplicateSkipped > 0
             ? "최근 1시간 핫딜 중 새로 저장할 항목이 없습니다."
             : "수집된 핫딜이 없습니다."
           : "핫딜 소스에서 데이터를 가져오지 못했습니다.";
+      const expirationMessage =
+        result.counts.expired > 0
+          ? dryRun
+            ? ` 만료 대상 ${result.counts.expired.toLocaleString("ko-KR")}건을 확인했습니다.`
+            : ` 만료 ${result.counts.expired.toLocaleString("ko-KR")}건을 처리했습니다.`
+          : "";
+
+      result.message = `${baseMessage}${expirationMessage}`;
       return result;
     }
 
     if (dryRun) {
       result.ok = true;
-      result.message = `Dry run으로 핫딜 ${items.length}건을 확인했습니다.`;
+      result.message = `Dry run으로 핫딜 ${items.length}건과 만료 대상 ${result.counts.expired.toLocaleString("ko-KR")}건을 확인했습니다.`;
       return result;
     }
 
@@ -218,7 +236,7 @@ export async function syncHotDealsFromPublicSources({
 
     result.ok = true;
     result.counts.upserted = rows.length;
-    result.message = `핫딜 ${rows.length}건을 동기화했습니다.`;
+    result.message = `핫딜 ${rows.length}건을 동기화했고 만료 ${result.counts.expired.toLocaleString("ko-KR")}건을 처리했습니다.`;
     return result;
   } catch (error) {
     result.ok = false;

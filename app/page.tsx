@@ -2,18 +2,14 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  BadgePercent,
   Building2,
   CalendarDays,
   CircleDollarSign,
   Clock3,
-  ExternalLink,
   ListChecks,
   TrendingUp,
 } from "lucide-react";
-import { ExternalDealLink } from "@/components/external-deal-link";
 import { IpoCard } from "@/components/ipo-card";
-import { getHotDeals, type HotDeal } from "@/lib/hot-deals";
 import type { Ipo } from "@/lib/ipos";
 import { getIpos } from "@/lib/ipos";
 import {
@@ -31,7 +27,7 @@ export default async function Home() {
     .filter((ipo) => ipo.status === "active")
     .sort((left, right) => compareIsoDates(left.subscriptionEnd, right.subscriptionEnd));
   const weekSummary = buildWeekSummary(allIpos, todayIso);
-  const [listedLeaderboard, todayListings, latestHotDeals] = await Promise.all([
+  const [listedLeaderboard, todayListings] = await Promise.all([
     buildListedLeaderboard(allIpos),
     Promise.all(
       allIpos
@@ -45,7 +41,6 @@ export default async function Home() {
           }),
         })),
     ),
-    getHotDeals(3),
   ]);
 
   return (
@@ -67,13 +62,7 @@ export default async function Home() {
               공모주 보기
               <ArrowRight size={17} aria-hidden="true" />
             </Link>
-            <Link
-              href="/hotdeals"
-              className="inline-flex h-11 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
-            >
-              <BadgePercent size={17} aria-hidden="true" />
-              핫딜 보기
-            </Link>
+            {/* 핫딜 메뉴는 운영 재정비 전까지 노출하지 않습니다. */}
           </div>
         </div>
       </section>
@@ -84,7 +73,7 @@ export default async function Home() {
 
       <WeeklySummarySection todayIso={todayIso} summary={weekSummary} />
 
-      <HotDealsPreviewSection deals={latestHotDeals} />
+      {/* 핫딜 미리보기는 운영 재정비 전까지 노출하지 않습니다. */}
 
       {activeIpos.length > 0 ? <ActiveSubscriptionSection ipos={activeIpos} /> : null}
 
@@ -207,81 +196,6 @@ function WeeklySummaryCard({
         </p>
       )}
     </article>
-  );
-}
-
-function HotDealsPreviewSection({ deals }: { deals: HotDeal[] }) {
-  if (deals.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="border-b border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-              새로 들어온 할인
-            </p>
-            <h2 className="mt-1 text-xl font-semibold text-neutral-950 dark:text-white">
-              최신 핫딜
-            </h2>
-          </div>
-          <Link
-            href="/hotdeals"
-            className="inline-flex h-10 w-fit items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
-          >
-            핫딜 전체
-            <ArrowRight size={16} aria-hidden="true" />
-          </Link>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          {deals.map((deal) => (
-            <article
-              key={deal.id}
-              className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-                    {formatRelativeTime(deal.publishedAt ?? deal.collectedAt)}
-                  </p>
-                  <h3 className="mt-2 line-clamp-2 text-base font-semibold leading-6 text-neutral-950 dark:text-white">
-                    <ExternalDealLink
-                      href={deal.dealUrl}
-                      className="bg-transparent p-0 text-left font-semibold hover:text-emerald-700 dark:hover:text-emerald-400"
-                      ariaLabel={`${deal.title} 상품 보기`}
-                    >
-                      {deal.title}
-                    </ExternalDealLink>
-                  </h3>
-                </div>
-                <ExternalDealLink
-                  href={deal.dealUrl}
-                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white p-0 text-neutral-500 hover:text-neutral-950 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400 dark:hover:text-white"
-                  ariaLabel={`${deal.title} 상품 열기`}
-                >
-                  <ExternalLink size={16} aria-hidden="true" />
-                </ExternalDealLink>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {deal.category ? (
-                  <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-neutral-600 dark:bg-neutral-950 dark:text-neutral-300">
-                    {deal.category}
-                  </span>
-                ) : null}
-                {deal.priceText ? (
-                  <span className="rounded-md bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
-                    {deal.priceText}
-                  </span>
-                ) : null}
-              </div>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -644,31 +558,6 @@ function formatSignedRate(value?: number | null) {
 
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}%`;
-}
-
-function formatRelativeTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "시간 미확인";
-  }
-
-  const diffMs = Date.now() - date.getTime();
-  const diffMinutes = Math.max(0, Math.floor(diffMs / 60_000));
-
-  if (diffMinutes < 1) {
-    return "방금 전";
-  }
-
-  if (diffMinutes < 60) {
-    return `${diffMinutes}분 전`;
-  }
-
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) {
-    return `${diffHours}시간 전`;
-  }
-
-  return formatDate(value);
 }
 
 function getReturnTone(value?: number | null) {

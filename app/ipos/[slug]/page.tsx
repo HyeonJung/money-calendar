@@ -105,6 +105,10 @@ export default async function IpoDetailPage({ params }: IpoDetailPageProps) {
           <div className="grid min-w-72 grid-cols-2 gap-3">
             <SummaryBox label="확정 공모가" value={formatMoney(ipo.confirmedOfferPrice)} />
             <SummaryBox label="희망 공모가" value={formatRange(ipo.offerPriceRangeLow, ipo.offerPriceRangeHigh)} />
+            <SummaryBox
+              label={ipo.status === "active" ? "현재 청약경쟁률" : "청약경쟁률"}
+              value={formatSubscriptionCompetitionRate(ipo)}
+            />
             <SummaryBox label="기관 경쟁률" value={formatRate(ipo.competitionRate, "대 1")} />
             <SummaryBox label="의무보유확약" value={formatRate(ipo.lockupRate, "%")} />
             {ipo.status === "listed" ? (
@@ -835,6 +839,14 @@ function formatRate(value?: number | null, unit = "") {
   }
 
   return `${value.toLocaleString("ko-KR")}${unit}`;
+}
+
+function formatSubscriptionCompetitionRate(ipo: Ipo) {
+  if (ipo.subscriptionCompetitionRate === null || ipo.subscriptionCompetitionRate === undefined) {
+    return ipo.status === "active" ? "집계 전" : "미정";
+  }
+
+  return formatRate(ipo.subscriptionCompetitionRate, "대 1");
 }
 
 function formatShares(value?: number | null) {

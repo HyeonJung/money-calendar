@@ -25,8 +25,10 @@ import { createHotDealInputFromProductUrl } from "@/lib/hotdeal-link-parser";
 import {
   createManualHotDeal,
   deleteHotDeal,
+  expireOldHotDeals,
   getAdminHotDeals,
   getAdminHotDealMetrics,
+  HOT_DEAL_EXPIRATION_HOURS,
   updateManualHotDeal,
   type AdminHotDeal,
   type AdminHotDealMetricsResult,
@@ -84,6 +86,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         hotDeals={hotDeals}
         hotDealMetrics={hotDealMetrics}
         syncDashboard={syncDashboard}
+        canEdit={access.canRunSync}
       />
       <CreateHotDealPanel canEdit={access.canRunSync} />
       {hotDeals.ok ? (
@@ -176,6 +179,21 @@ async function deleteHotDealAction(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath("/hotdeals");
   redirect(`/admin?hotdeal=${result.ok ? "deleted" : "failed"}`);
+}
+
+async function expireHotDealsAction() {
+  "use server";
+
+  const access = await getAdminAccess();
+  if (access.state !== "authorized" || !access.canRunSync) {
+    redirect("/admin?hotdeal=forbidden");
+  }
+
+  const result = await expireOldHotDeals();
+
+  revalidatePath("/admin");
+  revalidatePath("/hotdeals");
+  redirect(`/admin?hotdeal=${result.ok ? "expired" : "expire-failed"}`);
 }
 
 function AdminPageShell({
@@ -285,10 +303,12 @@ function AdminOverview({
   hotDeals,
   hotDealMetrics,
   syncDashboard,
+  canEdit,
 }: {
   hotDeals: Awaited<ReturnType<typeof getAdminHotDeals>>;
   hotDealMetrics: AdminHotDealMetricsResult;
   syncDashboard: SyncRunDashboard;
+  canEdit: boolean;
 }) {
   const metrics = hotDealMetrics.ok ? hotDealMetrics.metrics : null;
   const fallbackActiveCount = hotDeals.ok
@@ -383,6 +403,10 @@ function AdminOverview({
           description="노출 중인 핫딜 중 보완이 필요한 항목입니다."
         >
           <DashboardFact
+            label="만료 대상"
+            value={metrics ? `${formatNumber(metrics.expireCandidateCount)}건` : "-"}
+          />
+          <DashboardFact
             label="이미지 없음"
             value={metrics ? `${formatNumber(metrics.activeWithoutImageCount)}건` : "-"}
           />
@@ -398,6 +422,16 @@ function AdminOverview({
             label="카테고리 상위"
             value={metrics?.categoryBreakdown[0]?.label ?? "-"}
           />
+          <form action={expireHotDealsAction}>
+            <button
+              type="submit"
+              disabled={!canEdit}
+              className="mt-1 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <RefreshCw size={15} aria-hidden="true" />
+              {HOT_DEAL_EXPIRATION_HOURS}시간 지난 핫딜 만료
+            </button>
+          </form>
         </DashboardPanel>
       </section>
     </>
@@ -831,6 +865,8 @@ function ActionNotice({ value }: { value?: string }) {
     created: "핫딜을 등록했습니다.",
     updated: "핫딜을 수정했습니다.",
     deleted: "핫딜을 삭제했습니다.",
+    expired: "24시간 지난 핫딜을 만료 처리했습니다.",
+    "expire-failed": "핫딜 자동 만료 처리에 실패했습니다. DB 상태를 확인해 주세요.",
     duplicated: "이미 같은 상품 주소로 등록된 핫딜이 있습니다.",
     failed: "핫딜 처리에 실패했습니다. 입력값이나 DB 상태를 확인해 주세요.",
     forbidden: "핫딜을 변경할 권한이 없습니다.",
@@ -841,7 +877,14 @@ function ActionNotice({ value }: { value?: string }) {
     return null;
   }
 
-  const isSuccess = ["auto-created", "auto-created-minimal", "created", "updated", "deleted"].includes(value);
+  const isSuccess = [
+    "auto-created",
+    "auto-created-minimal",
+    "created",
+    "updated",
+    "deleted",
+    "expired",
+  ].includes(value);
 
   return (
     <div

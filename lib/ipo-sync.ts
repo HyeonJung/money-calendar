@@ -31,7 +31,7 @@ type SourceListEntry = {
   confirmedOfferPrice: number | null;
   offerPriceRangeLow: number | null;
   offerPriceRangeHigh: number | null;
-  competitionRate: number | null;
+  subscriptionCompetitionRate: number | null;
   underwriters: string[];
   marketHint: string | null;
 };
@@ -71,6 +71,7 @@ type IpoUpsertRow = {
   public_offering_shares: number | null;
   underwriters: string[];
   lead_manager: string;
+  subscription_competition_rate: number | null;
   competition_rate: number | null;
   lockup_rate: number | null;
   institutional_commitment_rate: number | null;
@@ -519,7 +520,7 @@ function parseListRows(html: string) {
         confirmedOfferPrice: parseInteger(stripTags(cells[2])),
         offerPriceRangeLow: parseInteger(stripTags(cells[3]).split("~")[0] ?? ""),
         offerPriceRangeHigh: parseInteger(stripTags(cells[3]).split("~")[1] ?? ""),
-        competitionRate: parseNumber(stripTags(cells[4])),
+        subscriptionCompetitionRate: parseNumber(stripTags(cells[4])),
         underwriters: splitByComma(stripTags(cells[5])),
         marketHint,
       } satisfies SourceListEntry;
@@ -658,6 +659,7 @@ function toUpsertRow(ipo: Ipo): IpoUpsertRow {
     public_offering_shares: ipo.publicOfferingShares,
     underwriters: ipo.underwriters,
     lead_manager: ipo.leadManager,
+    subscription_competition_rate: ipo.subscriptionCompetitionRate ?? null,
     competition_rate: ipo.competitionRate,
     lockup_rate: ipo.lockupRate,
     institutional_commitment_rate: ipo.institutionalCommitmentRate,
@@ -689,11 +691,36 @@ async function upsertIpos(rows: IpoUpsertRow[]) {
     .upsert(rows, { onConflict: "slug" })
     .select("slug");
 
+  if (isMissingSubscriptionCompetitionColumn(error)) {
+    const legacyRows = rows.map((row) => {
+      const legacyRow: Partial<IpoUpsertRow> = { ...row };
+      delete legacyRow.subscription_competition_rate;
+      return legacyRow;
+    });
+    const { data: retryData, error: retryError } = await client
+      .from("ipos")
+      .upsert(legacyRows, { onConflict: "slug" })
+      .select("slug");
+
+    if (retryError) {
+      throw new Error(retryError.message);
+    }
+
+    return retryData?.length ?? legacyRows.length;
+  }
+
   if (error) {
     throw new Error(error.message);
   }
 
   return data?.length ?? rows.length;
+}
+
+function isMissingSubscriptionCompetitionColumn(error: { message?: string } | null) {
+  return Boolean(
+    error?.message?.includes("subscription_competition_rate") &&
+      error.message.includes("column"),
+  );
 }
 
 async function collectListEntries(result: SyncResult) {
@@ -794,7 +821,8 @@ function normalizeIpo(
     publicOfferingShares: detail?.publicOfferingShares ?? null,
     underwriters: listEntry.underwriters,
     leadManager,
-    competitionRate: listEntry.competitionRate ?? detail?.competitionRate ?? null,
+    subscriptionCompetitionRate: listEntry.subscriptionCompetitionRate,
+    competitionRate: detail?.competitionRate ?? null,
     lockupRate: detail?.lockupRate ?? null,
     institutionalCommitmentRate: null,
     expectedMarketCap: null,

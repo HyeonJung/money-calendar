@@ -62,6 +62,7 @@ export type AdminHotDealMetrics = {
   activeCount: number;
   expiredCount: number;
   hiddenCount: number;
+  expireCandidateCount: number;
   collectedTodayCount: number;
   collectedLast24HoursCount: number;
   manualCreatedTodayCount: number;
@@ -87,6 +88,23 @@ export type AdminHotDealMetricsResult =
   | {
       ok: false;
       metrics: null;
+      reason: "missing-env" | "schema-required" | "query-failed";
+      message: string;
+    };
+
+export type ExpireOldHotDealsResult =
+  | {
+      ok: true;
+      expiredCount: number;
+      cutoff: string;
+      dryRun: boolean;
+      message: string;
+    }
+  | {
+      ok: false;
+      expiredCount: 0;
+      cutoff: string;
+      dryRun: boolean;
       reason: "missing-env" | "schema-required" | "query-failed";
       message: string;
     };
@@ -122,26 +140,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 const ALLOWED_SOURCE_NAMES = ["아카라이브", "어미새", "운영자 등록"];
 const HOT_DEAL_STATUSES = new Set<HotDealStatus>(["active", "expired", "hidden"]);
-
-export const sampleHotDeals: HotDeal[] = [
-  {
-    id: "sample-hotdeal-1",
-    externalId: "sample-hotdeal-1",
-    slug: "sample-hotdeal-1",
-    title: "샘플 핫딜 데이터입니다. 수집 설정 후 실제 핫딜로 교체됩니다.",
-    sourceName: "머니캘린더",
-    sourceUrl: "/hotdeals",
-    dealUrl: "/hotdeals",
-    imageUrl: null,
-    priceText: null,
-    category: "안내",
-    publishedAt: null,
-    collectedAt: new Date().toISOString(),
-    likeCount: null,
-    commentCount: null,
-    isAd: false,
-  },
-];
+export const HOT_DEAL_EXPIRATION_HOURS = 24;
 
 function hasSupabaseEnv() {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
@@ -209,6 +208,7 @@ async function fetchHotDealsFromSupabase(limit: number) {
     .select("*")
     .eq("status", "active")
     .in("source_name", ALLOWED_SOURCE_NAMES)
+    .gte("collected_at", getHotDealExpirationCutoffIso())
     .order("published_at", { ascending: false, nullsFirst: false })
     .order("collected_at", { ascending: false })
     .limit(limit);
@@ -231,7 +231,7 @@ export async function getHotDeals(limit = 40) {
     }
   }
 
-  return sampleHotDeals;
+  return [];
 }
 
 export async function getAdminHotDeals(limit = 80): Promise<AdminHotDealListResult> {
@@ -299,6 +299,7 @@ export async function getAdminHotDealMetrics(): Promise<AdminHotDealMetricsResul
       activeCount,
       expiredCount,
       hiddenCount,
+      expireCandidateCount,
       collectedTodayCount,
       collectedLast24HoursCount,
       manualCreatedTodayCount,
@@ -311,6 +312,7 @@ export async function getAdminHotDealMetrics(): Promise<AdminHotDealMetricsResul
       countHotDeals({ status: "active" }),
       countHotDeals({ status: "expired" }),
       countHotDeals({ status: "hidden" }),
+      countHotDeals({ status: "active", collectedTo: getHotDealExpirationCutoffIso(now) }),
       countHotDeals({ collectedFrom: todayStart, collectedTo: todayEnd }),
       countHotDeals({ collectedFrom: last24Hours }),
       countHotDeals({
@@ -341,6 +343,7 @@ export async function getAdminHotDealMetrics(): Promise<AdminHotDealMetricsResul
         activeCount,
         expiredCount,
         hiddenCount,
+        expireCandidateCount,
         collectedTodayCount,
         collectedLast24HoursCount,
         manualCreatedTodayCount,
@@ -477,6 +480,80 @@ export async function getAdminHotDealMetrics(): Promise<AdminHotDealMetricsResul
       ok: true,
       rows: (data ?? []) as HotDealMetricRow[],
     };
+  }
+}
+
+export async function expireOldHotDeals({
+  dryRun = false,
+  olderThanHours = HOT_DEAL_EXPIRATION_HOURS,
+}: {
+  dryRun?: boolean;
+  olderThanHours?: number;
+} = {}): Promise<ExpireOldHotDealsResult> {
+  const client = createSupabaseServiceRoleClient();
+  const cutoff = getHotDealExpirationCutoffIso(new Date(), olderThanHours);
+
+  if (!client) {
+    return {
+      ok: false,
+      expiredCount: 0,
+      cutoff,
+      dryRun,
+      reason: "missing-env",
+      message: "SUPABASE_SERVICE_ROLE_KEY가 없어 핫딜 자동 만료를 실행할 수 없습니다.",
+    };
+  }
+
+  try {
+    if (dryRun) {
+      const { count, error } = await client
+        .from("hot_deals")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "active")
+        .lt("collected_at", cutoff);
+
+      if (error) {
+        return mapExpireError(error.message, cutoff, dryRun);
+      }
+
+      const expiredCount = count ?? 0;
+      return {
+        ok: true,
+        expiredCount,
+        cutoff,
+        dryRun,
+        message: `만료 대상 핫딜 ${expiredCount.toLocaleString("ko-KR")}건을 확인했습니다.`,
+      };
+    }
+
+    const { data, error } = await client
+      .from("hot_deals")
+      .update({
+        status: "expired",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("status", "active")
+      .lt("collected_at", cutoff)
+      .select("id");
+
+    if (error) {
+      return mapExpireError(error.message, cutoff, dryRun);
+    }
+
+    const expiredCount = data?.length ?? 0;
+    return {
+      ok: true,
+      expiredCount,
+      cutoff,
+      dryRun,
+      message: `24시간 지난 핫딜 ${expiredCount.toLocaleString("ko-KR")}건을 만료 처리했습니다.`,
+    };
+  } catch (error) {
+    return mapExpireError(
+      error instanceof Error ? error.message : "Unknown hot deal expiration error.",
+      cutoff,
+      dryRun,
+    );
   }
 }
 
@@ -728,6 +805,36 @@ function getSeoulDayRange(date: Date) {
   return {
     start: start.toISOString(),
     end: end.toISOString(),
+  };
+}
+
+function getHotDealExpirationCutoffIso(
+  date = new Date(),
+  olderThanHours = HOT_DEAL_EXPIRATION_HOURS,
+) {
+  return new Date(date.getTime() - olderThanHours * 60 * 60 * 1000).toISOString();
+}
+
+function mapExpireError(
+  message: string,
+  cutoff: string,
+  dryRun: boolean,
+): ExpireOldHotDealsResult {
+  const reason =
+    message.includes("hot_deals") || message.includes("schema cache")
+      ? "schema-required"
+      : "query-failed";
+
+  return {
+    ok: false,
+    expiredCount: 0,
+    cutoff,
+    dryRun,
+    reason,
+    message:
+      reason === "schema-required"
+        ? "hot_deals 테이블이 아직 DB에 적용되지 않았습니다."
+        : `핫딜 자동 만료에 실패했습니다: ${message}`,
   };
 }
 

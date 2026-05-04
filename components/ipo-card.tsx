@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Building2, CalendarDays, Landmark, LineChart } from "lucide-react";
+import { Activity, ArrowUpRight, Building2, CalendarDays, Landmark, LineChart } from "lucide-react";
 import { format, isValid, parseISO } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { Ipo } from "@/lib/ipos";
@@ -37,6 +37,9 @@ type IpoView = Ipo & {
   underwriters?: string[] | string | null;
   leadManager?: string | null;
   leadManagers?: string[] | string | null;
+  subscriptionCompetitionRate?: string | number | null;
+  currentSubscriptionCompetitionRate?: string | number | null;
+  retailCompetitionRate?: string | number | null;
   competitionRate?: string | number | null;
   institutionCompetitionRate?: string | number | null;
   demandForecastCompetition?: string | number | null;
@@ -65,6 +68,18 @@ export function IpoCard({ ipo }: IpoCardProps) {
   const underwriters = formatList(
     view.underwriters ?? view.leadManagers ?? view.leadManager,
   );
+  const subscriptionCompetitionRateRaw =
+    view.subscriptionCompetitionRate ??
+    view.currentSubscriptionCompetitionRate ??
+    view.retailCompetitionRate;
+  const subscriptionCompetitionRate = formatMetric(
+    subscriptionCompetitionRateRaw,
+    ":1",
+  );
+  const showSubscriptionCompetition =
+    view.status === "active" || subscriptionCompetitionRate !== "-";
+  const subscriptionCompetitionLabel =
+    view.status === "active" ? "현재 청약경쟁률" : "청약경쟁률";
   const institutionCompetitionRate = formatMetric(
     view.competitionRate ??
       view.institutionCompetitionRate ??
@@ -107,6 +122,31 @@ export function IpoCard({ ipo }: IpoCardProps) {
           <ArrowUpRight size={15} aria-hidden="true" />
         </Link>
       </div>
+
+      {showSubscriptionCompetition ? (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 dark:border-emerald-900/70 dark:bg-emerald-950/40">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-white text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                <Activity size={16} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  {subscriptionCompetitionLabel}
+                </p>
+                <p className="mt-0.5 text-lg font-semibold text-neutral-950 dark:text-white">
+                  {subscriptionCompetitionRate === "-"
+                    ? "집계 전"
+                    : subscriptionCompetitionRate}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs font-medium text-emerald-700/80 dark:text-emerald-300/80">
+              공개 소스 반영 기준
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <dl className="mt-4 grid gap-x-4 gap-y-3 border-t border-neutral-100 pt-4 text-sm dark:border-neutral-800 sm:grid-cols-2">
         <InfoItem

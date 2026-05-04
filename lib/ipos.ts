@@ -24,6 +24,7 @@ export type Ipo = {
   publicOfferingShares: number | null;
   underwriters: string[];
   leadManager: string;
+  subscriptionCompetitionRate?: number | null;
   competitionRate: number | null;
   lockupRate: number | null;
   institutionalCommitmentRate: number | null;
@@ -52,6 +53,7 @@ type IpoRow = {
   public_offering_shares: number | string | null;
   underwriters: string[] | null;
   lead_manager: string | null;
+  subscription_competition_rate?: number | string | null;
   competition_rate: number | string | null;
   lockup_rate: number | string | null;
   institutional_commitment_rate: number | string | null;
@@ -433,6 +435,7 @@ function mapRowToIpo(row: IpoRow): Ipo {
     publicOfferingShares: toNumber(row.public_offering_shares),
     underwriters: toStringArray(row.underwriters),
     leadManager: row.lead_manager ?? "",
+    subscriptionCompetitionRate: toNumber(row.subscription_competition_rate),
     competitionRate: toNumber(row.competition_rate),
     lockupRate: toNumber(row.lockup_rate),
     institutionalCommitmentRate: toNumber(row.institutional_commitment_rate),

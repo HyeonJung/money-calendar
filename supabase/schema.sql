@@ -19,6 +19,7 @@ create table if not exists public.ipos (
   public_offering_shares bigint,
   underwriters text[] not null default '{}',
   lead_manager text not null default '',
+  subscription_competition_rate numeric(10, 2),
   competition_rate numeric(10, 2),
   lockup_rate numeric(5, 2),
   institutional_commitment_rate numeric(5, 2),
@@ -37,6 +38,8 @@ create index if not exists ipos_subscription_start_idx on public.ipos (subscript
 create index if not exists ipos_listing_date_idx on public.ipos (listing_date desc);
 create index if not exists ipos_market_status_idx on public.ipos (market, status);
 
+alter table public.ipos add column if not exists subscription_competition_rate numeric(10, 2);
+
 alter table public.ipos enable row level security;
 
 drop policy if exists "Public read access to ipos" on public.ipos;
@@ -47,6 +50,7 @@ to anon, authenticated
 using (true);
 
 comment on table public.ipos is '머니캘린더 공모주 일정용 샘플/운영 공모주 데이터 테이블';
+comment on column public.ipos.subscription_competition_rate is '일반 투자자 청약경쟁률. 공개 소스에 집계된 경우 동기화한다';
 comment on column public.ipos.description is '설명 텍스트. 샘플 데이터인 경우 예시 문구를 포함할 수 있음';
 
 -- Sample seed rows for local/dev preview only.
