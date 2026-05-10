@@ -27,6 +27,32 @@ type IpoDetailPageProps = {
   }>;
 };
 
+type IpoScoreTone = "danger" | "warning" | "caution" | "good" | "strong" | "neutral";
+
+type IpoScoreFactor = {
+  key: string;
+  label: string;
+  value: string;
+  score: number | null;
+  maxScore: number;
+  criteria: string;
+  detail: string;
+};
+
+type IpoScoreReport = {
+  totalScore: number;
+  maxScore: number;
+  availableMaxScore: number;
+  availableFactorCount: number;
+  factors: IpoScoreFactor[];
+  band: {
+    label: string;
+    range: string;
+    tone: IpoScoreTone;
+  };
+  isComplete: boolean;
+};
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -67,6 +93,7 @@ export default async function IpoDetailPage({ params }: IpoDetailPageProps) {
   ]);
   const todayIso = getTodayIsoInSeoul();
   const relatedIpos = getRelatedIpos(allIpos, ipo);
+  const ipoScore = buildIpoScoreReport(ipo, listedReturn?.currentPrice);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -132,6 +159,8 @@ export default async function IpoDetailPage({ params }: IpoDetailPageProps) {
           </div>
         </div>
       </section>
+
+      <IpoScoreSection report={ipoScore} />
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
         <ScheduleTimeline ipo={ipo} todayIso={todayIso} />
@@ -325,6 +354,98 @@ function SourceDocuments({
           </a>
         </div>
       )}
+    </section>
+  );
+}
+
+function IpoScoreSection({ report }: { report: IpoScoreReport }) {
+  const bandClassName = getScoreBandClassName(report.band.tone);
+
+  return (
+    <section className="mt-5 rounded-lg border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-950 sm:p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <TrendingUp size={18} aria-hidden="true" className="text-emerald-700 dark:text-emerald-400" />
+            <h2 className="text-lg font-semibold text-neutral-950 dark:text-white">공모주 점수</h2>
+          </div>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600 dark:text-neutral-400">
+            기관경쟁률, 의무보유확약, 유통가능 규모, 장외가격을 기준표에 맞춰 계산했습니다.
+          </p>
+        </div>
+        <div className={`rounded-lg border px-4 py-3 text-right ${bandClassName.summary}`}>
+          <p className="text-xs font-semibold">총 점수</p>
+          <p className="mt-1 text-3xl font-semibold tracking-normal">
+            {report.totalScore.toLocaleString("ko-KR")}점
+          </p>
+          <p className="mt-1 text-xs font-medium">
+            {report.isComplete
+              ? `전체 기준 ${report.maxScore}점`
+              : `확인 항목 ${report.availableFactorCount}/${report.factors.length}개 · ${report.availableMaxScore}점 기준`}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-5">
+        {IPO_SCORE_BANDS.map((band) => {
+          const isActive = band.label === report.band.label;
+          const className = getScoreBandClassName(band.tone);
+
+          return (
+            <div
+              key={band.label}
+              className={[
+                "rounded-lg border px-3 py-3",
+                isActive ? className.activeBand : className.inactiveBand,
+              ].join(" ")}
+            >
+              <p className="text-xs font-semibold">{band.range}</p>
+              <p className="mt-1 text-sm font-semibold">{band.label}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 overflow-x-auto">
+        <div className="min-w-[760px] overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
+          <div className="grid grid-cols-[1.05fr_1fr_88px_1.2fr] bg-neutral-100 text-xs font-semibold text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
+            <div className="px-3 py-2.5">항목</div>
+            <div className="px-3 py-2.5">현재 값</div>
+            <div className="px-3 py-2.5 text-center">점수</div>
+            <div className="px-3 py-2.5">기준</div>
+          </div>
+          <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
+            {report.factors.map((factor) => (
+              <div
+                key={factor.key}
+                className="grid grid-cols-[1.05fr_1fr_88px_1.2fr] bg-white text-sm dark:bg-neutral-950"
+              >
+                <div className="px-3 py-3">
+                  <p className="font-semibold text-neutral-950 dark:text-neutral-100">{factor.label}</p>
+                  <p className="mt-1 text-xs leading-5 text-neutral-500 dark:text-neutral-400">
+                    {factor.detail}
+                  </p>
+                </div>
+                <div className="px-3 py-3 font-semibold text-neutral-800 dark:text-neutral-200">
+                  {factor.value}
+                </div>
+                <div className="flex items-start justify-center px-3 py-3">
+                  <span className={`inline-flex min-w-14 justify-center rounded-md px-2 py-1 text-xs font-semibold ${getScorePillClassName(factor)}`}>
+                    {formatFactorScore(factor.score)}
+                  </span>
+                </div>
+                <div className="px-3 py-3 text-sm leading-6 text-neutral-600 dark:text-neutral-400">
+                  {factor.criteria}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-3 text-xs leading-5 text-neutral-500 dark:text-neutral-400">
+        장외가격이 아직 수집되지 않은 종목은 해당 항목을 제외한 확인 가능 점수로 표시합니다.
+      </p>
     </section>
   );
 }
@@ -719,6 +840,308 @@ function TextList({
       </ul>
     </section>
   );
+}
+
+const IPO_SCORE_BANDS: Array<{
+  min: number;
+  max: number | null;
+  range: string;
+  label: string;
+  tone: IpoScoreTone;
+}> = [
+  { min: Number.NEGATIVE_INFINITY, max: 5, range: "0~5점", label: "손실 위험", tone: "danger" },
+  { min: 6, max: 10, range: "6~10점", label: "손실 가능", tone: "warning" },
+  { min: 11, max: 15, range: "11~15점", label: "50% 구간", tone: "caution" },
+  { min: 16, max: 20, range: "16~20점", label: "100% 구간", tone: "good" },
+  { min: 21, max: null, range: "21점 이상", label: "160% 구간", tone: "strong" },
+];
+
+function buildIpoScoreReport(
+  ipo: Ipo,
+  listedCurrentPrice?: number | null,
+): IpoScoreReport {
+  const baseOfferPrice = getBaseOfferPrice(ipo);
+  const estimatedOfferingAmount =
+    baseOfferPrice && ipo.publicOfferingShares
+      ? baseOfferPrice * ipo.publicOfferingShares
+      : null;
+  const pricePremiumRate =
+    baseOfferPrice && listedCurrentPrice
+      ? ((listedCurrentPrice - baseOfferPrice) / baseOfferPrice) * 100
+      : null;
+  const factors: IpoScoreFactor[] = [
+    {
+      key: "institution-competition",
+      label: "기관경쟁률",
+      value: formatRate(ipo.competitionRate, "대 1"),
+      score: scoreInstitutionCompetition(ipo.competitionRate),
+      maxScore: 5,
+      criteria: "300대 1 미만 0점, 500대 1 이상 5점",
+      detail: "수요예측 흥행 강도",
+    },
+    {
+      key: "lockup",
+      label: "의무보유확약",
+      value: formatRate(ipo.lockupRate, "%"),
+      score: scoreLockupRate(ipo.lockupRate),
+      maxScore: 10,
+      criteria: "5% 미만 0점, 30% 이상 10점",
+      detail: "상장 직후 매도 부담 완화 정도",
+    },
+    {
+      key: "offering-size",
+      label: "유통가능 규모",
+      value: estimatedOfferingAmount
+        ? formatApproxWon(estimatedOfferingAmount)
+        : "미정",
+      score: scoreOfferingAmount(estimatedOfferingAmount),
+      maxScore: 10,
+      criteria: "3,000억원 이상 0점, 200억원 이하 10점",
+      detail: "공모주식수와 기준 공모가로 추정",
+    },
+    {
+      key: "price-premium",
+      label: listedCurrentPrice ? "상장가 흐름" : "장외가격",
+      value:
+        listedCurrentPrice && pricePremiumRate !== null
+          ? `${formatMoney(listedCurrentPrice)} (${formatSignedRate(pricePremiumRate)})`
+          : "미확인",
+      score: scorePricePremium(pricePremiumRate),
+      maxScore: 6,
+      criteria: "공모가 대비 +50% 이하는 -3점, +160% 이상 6점",
+      detail: listedCurrentPrice
+        ? "공모가 대비 현재가"
+        : "현재 연결된 장외가격 데이터 없음",
+    },
+  ];
+  const totalScore = factors.reduce((sum, factor) => sum + (factor.score ?? 0), 0);
+  const availableFactors = factors.filter((factor) => factor.score !== null);
+  const availableMaxScore = availableFactors.reduce(
+    (sum, factor) => sum + factor.maxScore,
+    0,
+  );
+  const maxScore = factors.reduce((sum, factor) => sum + factor.maxScore, 0);
+
+  return {
+    totalScore,
+    maxScore,
+    availableMaxScore,
+    availableFactorCount: availableFactors.length,
+    factors,
+    band: getIpoScoreBand(totalScore),
+    isComplete: availableFactors.length === factors.length,
+  };
+}
+
+function getBaseOfferPrice(ipo: Ipo) {
+  return ipo.confirmedOfferPrice ?? ipo.offerPriceRangeHigh ?? ipo.offerPriceRangeLow ?? null;
+}
+
+function scoreInstitutionCompetition(value?: number | null) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value < 300) {
+    return 0;
+  }
+
+  if (value < 350) {
+    return 1;
+  }
+
+  if (value < 400) {
+    return 2;
+  }
+
+  if (value < 450) {
+    return 3;
+  }
+
+  if (value < 500) {
+    return 4;
+  }
+
+  return 5;
+}
+
+function scoreLockupRate(value?: number | null) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value < 5) {
+    return 0;
+  }
+
+  if (value < 10) {
+    return 2;
+  }
+
+  if (value < 15) {
+    return 4;
+  }
+
+  if (value < 20) {
+    return 6;
+  }
+
+  if (value < 30) {
+    return 8;
+  }
+
+  return 10;
+}
+
+function scoreOfferingAmount(value?: number | null) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value >= 300_000_000_000) {
+    return 0;
+  }
+
+  if (value > 200_000_000_000) {
+    return 1;
+  }
+
+  if (value > 100_000_000_000) {
+    return 2;
+  }
+
+  if (value > 50_000_000_000) {
+    return 4;
+  }
+
+  if (value > 20_000_000_000) {
+    return 6;
+  }
+
+  return 10;
+}
+
+function scorePricePremium(value?: number | null) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value <= 50) {
+    return -3;
+  }
+
+  if (value <= 100) {
+    return 0;
+  }
+
+  if (value <= 160) {
+    return 3;
+  }
+
+  return 6;
+}
+
+function getIpoScoreBand(score: number) {
+  return (
+    IPO_SCORE_BANDS.find(
+      (band) => score >= band.min && (band.max === null || score <= band.max),
+    ) ?? IPO_SCORE_BANDS[0]
+  );
+}
+
+function getScoreBandClassName(tone: IpoScoreTone) {
+  return {
+    danger: {
+      summary:
+        "border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300",
+      activeBand:
+        "border-red-300 bg-red-600 text-white dark:border-red-700 dark:bg-red-700",
+      inactiveBand:
+        "border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-300",
+    },
+    warning: {
+      summary:
+        "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/70 dark:bg-orange-950/40 dark:text-orange-300",
+      activeBand:
+        "border-orange-300 bg-orange-500 text-white dark:border-orange-700 dark:bg-orange-700",
+      inactiveBand:
+        "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/70 dark:bg-orange-950/30 dark:text-orange-300",
+    },
+    caution: {
+      summary:
+        "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-300",
+      activeBand:
+        "border-amber-300 bg-amber-300 text-amber-950 dark:border-amber-700 dark:bg-amber-600 dark:text-white",
+      inactiveBand:
+        "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-300",
+    },
+    good: {
+      summary:
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300",
+      activeBand:
+        "border-emerald-300 bg-emerald-500 text-white dark:border-emerald-700 dark:bg-emerald-700",
+      inactiveBand:
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300",
+    },
+    strong: {
+      summary:
+        "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-300",
+      activeBand:
+        "border-blue-300 bg-blue-600 text-white dark:border-blue-700 dark:bg-blue-700",
+      inactiveBand:
+        "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/70 dark:bg-blue-950/30 dark:text-blue-300",
+    },
+    neutral: {
+      summary:
+        "border-neutral-200 bg-neutral-50 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300",
+      activeBand:
+        "border-neutral-300 bg-neutral-700 text-white dark:border-neutral-700 dark:bg-neutral-700",
+      inactiveBand:
+        "border-neutral-200 bg-neutral-50 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300",
+    },
+  }[tone];
+}
+
+function getScorePillClassName(factor: IpoScoreFactor) {
+  if (factor.score === null) {
+    return "bg-neutral-100 text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400";
+  }
+
+  if (factor.score < 0) {
+    return "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300";
+  }
+
+  const ratio = factor.score / factor.maxScore;
+
+  if (ratio >= 0.75) {
+    return "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300";
+  }
+
+  if (ratio >= 0.5) {
+    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300";
+  }
+
+  if (ratio > 0) {
+    return "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300";
+  }
+
+  return "bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300";
+}
+
+function formatFactorScore(value: number | null) {
+  if (value === null) {
+    return "미확인";
+  }
+
+  return `${value.toLocaleString("ko-KR")}점`;
+}
+
+function formatApproxWon(value: number) {
+  if (value >= 100_000_000) {
+    return `약 ${Math.round(value / 100_000_000).toLocaleString("ko-KR")}억원`;
+  }
+
+  return `약 ${value.toLocaleString("ko-KR")}원`;
 }
 
 function getTodayIsoInSeoul() {
