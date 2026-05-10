@@ -13,7 +13,12 @@ import {
   RefreshCw,
   ShieldAlert,
 } from "lucide-react";
-import { getAdminAccess, type AdminAccess } from "@/lib/admin-auth";
+import {
+  createAdminActionToken,
+  getAdminAccess,
+  getAdminAccessFromActionToken,
+  type AdminAccess,
+} from "@/lib/admin-auth";
 import { syncHotDealsFromPublicSources } from "@/lib/hotdeal-sync";
 import { syncIposFromPublicSources } from "@/lib/ipo-sync";
 import {
@@ -85,12 +90,25 @@ export default async function AdminSyncPage({ searchParams }: AdminSyncPageProps
 async function runManualSyncAction(formData: FormData) {
   "use server";
 
-  const access = await getAdminAccess();
+  let access = await getAdminAccess();
   const dryRun = formData.get("dryRun") === "1";
   const source = readManualSyncSource(formData.get("source"));
+  const actionToken = String(formData.get("adminActionToken") ?? "");
 
-  if (access.state !== "authorized" || !access.canRunSync) {
-    redirect("/admin/sync?run=forbidden");
+  if (access.state !== "authorized") {
+    access = await getAdminAccessFromActionToken(actionToken);
+  }
+
+  if (access.state !== "authorized") {
+    redirect(
+      `/admin/sync?run=${getManualSyncDeniedCode(access)}&dryRun=${
+        dryRun ? "1" : "0"
+      }&source=${source}`,
+    );
+  }
+
+  if (!access.canRunSync) {
+    redirect(`/admin/sync?run=viewer-forbidden&dryRun=${dryRun ? "1" : "0"}&source=${source}`);
   }
 
   const startedAt = new Date();
@@ -149,6 +167,14 @@ function AdminShell({
 }) {
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      {access.user ? (
+        // Existing Supabase sessions are backfilled into the app admin session
+        // cookie so Server Actions can keep authorization stable.
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/auth/session/refresh" alt="" aria-hidden="true" className="hidden" />
+        </>
+      ) : null}
       <div className="mb-6 flex flex-col gap-3 border-b border-neutral-200 pb-5 dark:border-neutral-800 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
@@ -333,6 +359,8 @@ function SyncActionPanel({
 }: {
   access: Extract<AdminAccess, { state: "authorized" }>;
 }) {
+  const actionToken = createAdminActionToken(access.user.email);
+
   return (
     <section className="mt-5 rounded-lg border border-neutral-200 bg-white p-5 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none">
       <div>
@@ -350,12 +378,14 @@ function SyncActionPanel({
             title="공모주 동기화"
             description="공모주 일정, 상세 정보, 상태를 공개 소스 기준으로 갱신합니다."
             canRunSync={access.canRunSync}
+            actionToken={actionToken}
           />
           <ManualSyncCard
             source="hotdeals"
             title="핫딜 동기화"
             description="등록 1시간 이내 핫딜만 수집하고 같은 상품 주소는 건너뜁니다."
             canRunSync={access.canRunSync}
+            actionToken={actionToken}
           />
         </div>
       </div>
@@ -368,11 +398,13 @@ function ManualSyncCard({
   title,
   description,
   canRunSync,
+  actionToken,
 }: {
   source: ManualSyncSource;
   title: string;
   description: string;
   canRunSync: boolean;
+  actionToken: string;
 }) {
   return (
     <article className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900/60">
@@ -391,6 +423,7 @@ function ManualSyncCard({
         <form action={runManualSyncAction}>
           <input type="hidden" name="source" value={source} />
           <input type="hidden" name="dryRun" value="1" />
+          <input type="hidden" name="adminActionToken" value={actionToken} />
           <button
             type="submit"
             disabled={!canRunSync}
@@ -403,6 +436,7 @@ function ManualSyncCard({
         <form action={runManualSyncAction}>
           <input type="hidden" name="source" value={source} />
           <input type="hidden" name="dryRun" value="0" />
+          <input type="hidden" name="adminActionToken" value={actionToken} />
           <button
             type="submit"
             disabled={!canRunSync}
@@ -610,13 +644,20 @@ function ActionNotice({
   }
 
   const isSuccess = value === "success";
-  const isForbidden = value === "forbidden";
+  const isForbidden =
+    value === "forbidden" ||
+    value === "login-required" ||
+    value === "viewer-forbidden" ||
+    value === "setup-required";
   const sourceLabel = getManualSyncSourceLabel(source);
   const actionLabel = dryRun === "1" ? "Dry run" : "동기화";
   const text = {
     success: `${sourceLabel} ${actionLabel} 실행이 완료되었습니다.`,
     failed: `${sourceLabel} ${actionLabel} 실행에 실패했습니다. 실행 이력을 확인해 주세요.`,
-    forbidden: "동기화를 실행할 권한이 없습니다.",
+    forbidden: "이 Google 계정은 운영자 권한이 없습니다.",
+    "login-required": "로그인 세션이 만료되었습니다. 다시 로그인한 뒤 실행해 주세요.",
+    "viewer-forbidden": "viewer 권한은 이력 조회만 가능하고 동기화 실행은 admin 권한이 필요합니다.",
+    "setup-required": "관리자 권한 확인 설정이 완료되지 않아 동기화를 실행할 수 없습니다.",
   }[value];
 
   if (!text) {
@@ -699,6 +740,15 @@ function getTriggerTypeLabel(type: SyncRunTriggerType) {
 
 function readManualSyncSource(value: FormDataEntryValue | string | null | undefined): ManualSyncSource {
   return value === "hotdeals" ? "hotdeals" : "ipos";
+}
+
+function getManualSyncDeniedCode(access: Exclude<AdminAccess, { state: "authorized" }>) {
+  return ({
+    anonymous: "login-required",
+    "missing-env": "setup-required",
+    "setup-required": "setup-required",
+    forbidden: "forbidden",
+  })[access.state];
 }
 
 function getManualSyncSourceLabel(source: ManualSyncSource) {

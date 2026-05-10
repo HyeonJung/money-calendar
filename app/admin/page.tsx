@@ -205,6 +205,14 @@ function AdminPageShell({
 }) {
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      {access.user ? (
+        // Existing Supabase sessions are backfilled into the app admin session
+        // cookie so Server Actions can keep authorization stable.
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/auth/session/refresh" alt="" aria-hidden="true" className="hidden" />
+        </>
+      ) : null}
       <div className="mb-6 flex flex-col gap-3 border-b border-neutral-200 pb-5 dark:border-neutral-800 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { clearAdminSessionCookie } from "@/lib/admin-auth";
 import { createSupabaseAuthServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -6,6 +7,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const supabase = await createSupabaseAuthServerClient();
   const redirectUrl = new URL("/admin/sync", request.nextUrl.origin);
+
+  await clearAdminSessionCookie();
 
   if (supabase) {
     await supabase.auth.signOut();

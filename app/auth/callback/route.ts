@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAuthServerClient } from "@/lib/supabase-server";
+import { setAdminSessionCookie } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,17 @@ export async function GET(request: NextRequest) {
   if (error) {
     redirectUrl.searchParams.set("auth", "callback-error");
   } else {
-    redirectUrl.searchParams.set("auth", "signed-in");
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const email = user?.email?.trim().toLowerCase();
+
+    if (email) {
+      await setAdminSessionCookie(email);
+      redirectUrl.searchParams.set("auth", "signed-in");
+    } else {
+      redirectUrl.searchParams.set("auth", "callback-error");
+    }
   }
 
   return NextResponse.redirect(redirectUrl);
