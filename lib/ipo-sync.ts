@@ -9,6 +9,9 @@ import type { Ipo, IpoStatus } from "./ipos";
 const PUBLIC_SOURCE_NAME = "38커뮤니케이션";
 const PUBLIC_SOURCE_BASE_URL = "https://www.38.co.kr";
 const PUBLIC_LIST_PATH = "/html/fund/index.htm?o=k";
+const DART_SOURCE_NAME = "DART";
+const DART_BASE_URL = "https://dart.fss.or.kr";
+const DART_PUBLIC_OFFERING_PATH = "/dsac005/search.ax";
 const DEFAULT_ENCODING = "euc-kr";
 const FETCH_TIMEOUT_MS = 15_000;
 const LOOKBACK_DAYS = 120;
@@ -46,9 +49,27 @@ type SourceDetail = {
   sector: string | null;
   totalShares: number | null;
   publicOfferingShares: number | null;
+  tradableShares: number | null;
+  tradableRate: number | null;
+  otcSellPrice: number | null;
+  otcBuyPrice: number | null;
   refundDate: string | null;
   listingDate: string | null;
   leadManager: string | null;
+  competitionRate: number | null;
+  lockupRate: number | null;
+};
+
+type DartOfferingRow = {
+  companyName: string;
+  subscriptionStart: string | null;
+  subscriptionEnd: string | null;
+  reportName: string;
+  rcpNo: string;
+  isFinalTerms: boolean;
+};
+
+type DartDemandStats = {
   competitionRate: number | null;
   lockupRate: number | null;
 };
@@ -69,6 +90,10 @@ type IpoUpsertRow = {
   offer_price_range_high: number | null;
   total_shares: number | null;
   public_offering_shares: number | null;
+  tradable_shares: number | null;
+  tradable_rate: number | null;
+  otc_sell_price: number | null;
+  otc_buy_price: number | null;
   underwriters: string[];
   lead_manager: string;
   subscription_competition_rate: number | null;
@@ -144,16 +169,16 @@ function getServiceRoleKey() {
   return process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
 }
 
-async function fetchPublicHtml(pathOrUrl: string) {
-  const url = pathOrUrl.startsWith("http")
-    ? pathOrUrl
-    : `${PUBLIC_SOURCE_BASE_URL}${pathOrUrl}`;
-
+async function fetchHtml(
+  url: string,
+  defaultEncoding: string,
+  userAgentHost: string,
+) {
   const response = await fetch(url, {
     method: "GET",
     headers: {
       "user-agent":
-        "Mozilla/5.0 (compatible; money-calendar/1.0; +https://www.38.co.kr/)",
+        `Mozilla/5.0 (compatible; money-calendar/1.0; +${userAgentHost}/)`,
       accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
       pragma: "no-cache",
@@ -170,7 +195,7 @@ async function fetchPublicHtml(pathOrUrl: string) {
   const contentType = response.headers.get("content-type") ?? "";
   const charsetMatch = contentType.match(/charset=([^;]+)/i);
   const charset = normalizeEncoding(
-    charsetMatch?.[1]?.trim().toLowerCase() || DEFAULT_ENCODING,
+    charsetMatch?.[1]?.trim().toLowerCase() || defaultEncoding,
   );
   const buffer = await response.arrayBuffer();
 
@@ -179,6 +204,22 @@ async function fetchPublicHtml(pathOrUrl: string) {
   } catch {
     return new TextDecoder("utf-8").decode(buffer);
   }
+}
+
+async function fetchPublicHtml(pathOrUrl: string) {
+  const url = pathOrUrl.startsWith("http")
+    ? pathOrUrl
+    : `${PUBLIC_SOURCE_BASE_URL}${pathOrUrl}`;
+
+  return fetchHtml(url, DEFAULT_ENCODING, PUBLIC_SOURCE_BASE_URL);
+}
+
+async function fetchDartHtml(pathOrUrl: string) {
+  const url = pathOrUrl.startsWith("http")
+    ? pathOrUrl
+    : `${DART_BASE_URL}${pathOrUrl}`;
+
+  return fetchHtml(url, "utf-8", DART_BASE_URL);
 }
 
 function normalizeEncoding(value: string) {
@@ -573,15 +614,13 @@ function parseDetailPage(html: string, fallbackUnderwriters: string[]): SourceDe
     html,
     /종목코드<\/td>\s*<td[^>]*>\s*&nbsp;\s*([^<]+)/i,
   );
-  const totalShares = parseInteger(
+  const publicOfferingShares = parseInteger(
     extractFirstMatch(
       html,
       /총공모주식수\s*<\/td>\s*<td[^>]*>\s*&nbsp;\s*([^<]+)/i,
     ),
   );
-  const publicOfferingShares = parseInteger(
-    extractFirstMatch(html, /주식수:\s*([\d,]+)\s*주/i),
-  );
+  const tradableSummary = parseTradableSummary(html);
   const refundDate = parseFullDate(
     extractFirstMatch(html, /환불일<\/td>\s*<td[^>]*>\s*&nbsp;\s*([0-9.]+)/i),
   );
@@ -609,14 +648,287 @@ function parseDetailPage(html: string, fallbackUnderwriters: string[]): SourceDe
     companyCode,
     market,
     sector,
-    totalShares,
+    totalShares: tradableSummary?.postOfferingShares ?? null,
     publicOfferingShares,
+    tradableShares: tradableSummary?.tradableShares ?? null,
+    tradableRate: tradableSummary?.tradableRate ?? null,
+    otcSellPrice: parseOtcReferencePrice(html, "팝니다"),
+    otcBuyPrice: parseOtcReferencePrice(html, "삽니다"),
     refundDate,
     listingDate,
     leadManager: parseLeadManagerTable(html, fallbackUnderwriters),
     competitionRate,
     lockupRate,
   };
+}
+
+function parseTradableSummary(html: string) {
+  const markerIndex = html.indexOf("공모후 유통가능 물량");
+  if (markerIndex < 0) {
+    return null;
+  }
+
+  const summaryText = stripTags(html.slice(markerIndex, markerIndex + 180_000));
+  const matched = summaryText.match(
+    /합계\s+-\s+[\d,]+\s+[\d.]+%\s+([\d,]+)\s+[\d.]+%\s+([\d,]+)\s+([\d.]+)%\s+([\d,]+)\s+([\d.]+)%/i,
+  );
+
+  if (!matched) {
+    return null;
+  }
+
+  return {
+    postOfferingShares: parseInteger(matched[1]),
+    lockedShares: parseInteger(matched[2]),
+    lockedRate: parseNumber(matched[3]),
+    tradableShares: parseInteger(matched[4]),
+    tradableRate: parseNumber(matched[5]),
+  };
+}
+
+function parseOtcReferencePrice(html: string, label: "팝니다" | "삽니다") {
+  const markerIndex = html.indexOf(`${label} (가격참고)`);
+  if (markerIndex < 0) {
+    return null;
+  }
+
+  const section = html.slice(markerIndex, markerIndex + 6_000);
+  return parseInteger(
+    extractFirstMatch(
+      section,
+      /<tr[^>]*bgcolor=['"]#[^'"]+['"][^>]*>\s*<td[^>]*>[\s\S]*?<\/td>\s*<td[^>]*align=["']right["'][^>]*>\s*([0-9,]+)/i,
+    ),
+  );
+}
+
+async function collectDartOfferingRows() {
+  const firstPageHtml = await fetchDartHtml(DART_PUBLIC_OFFERING_PATH);
+  const maxPage = parseDartMaxPage(firstPageHtml);
+  const pageNumbers = Array.from({ length: maxPage - 1 }, (_, index) => index + 2);
+  const otherPages = await Promise.all(
+    pageNumbers.map((page) =>
+      fetchDartHtml(`${DART_PUBLIC_OFFERING_PATH}?currentPage=${page}`),
+    ),
+  );
+
+  return [firstPageHtml, ...otherPages].flatMap(parseDartOfferingRows);
+}
+
+function parseDartMaxPage(html: string) {
+  const matched = stripTags(html).match(/\[(\d+)\/(\d+)]\s*\[총\s*\d+건]/);
+  const maxPage = Number.parseInt(matched?.[2] ?? "1", 10);
+  return Number.isFinite(maxPage) ? Math.min(maxPage, 5) : 1;
+}
+
+function parseDartOfferingRows(html: string): DartOfferingRow[] {
+  return [...html.matchAll(/<tr[\s\S]*?<\/tr>/gi)]
+    .map((matched) => {
+      const rowHtml = matched[0];
+      const rowText = stripTags(rowHtml);
+
+      if (!/증권신고서\(지분증권\)/.test(rowText)) {
+        return null;
+      }
+
+      const rcpNo = extractFirstMatch(rowHtml, /rcpNo=(\d+)/);
+      if (!rcpNo) {
+        return null;
+      }
+
+      const cells = [...rowHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(
+        (cell) => stripTags(cell[1]),
+      );
+      const schedule = parseDartDateRange(cells[4] ?? "");
+
+      return {
+        companyName: cells[1] ?? "",
+        reportName: cells[2] ?? "",
+        subscriptionStart: schedule?.start ?? null,
+        subscriptionEnd: schedule?.end ?? null,
+        rcpNo,
+        isFinalTerms: rowText.includes("발행조건확정"),
+      } satisfies DartOfferingRow;
+    })
+    .filter((row): row is DartOfferingRow => Boolean(row));
+}
+
+function parseDartDateRange(value: string) {
+  const matched = value.match(
+    /(\d{4})\.(\d{2})\.(\d{2})\s*~\s*(\d{4})\.(\d{2})\.(\d{2})/,
+  );
+
+  if (!matched) {
+    return null;
+  }
+
+  return {
+    start: `${matched[1]}-${matched[2]}-${matched[3]}`,
+    end: `${matched[4]}-${matched[5]}-${matched[6]}`,
+  };
+}
+
+function findDartOfferingRow(rows: DartOfferingRow[], entry: SourceListEntry) {
+  const targetName = normalizeCompanyNameForMatch(entry.companyName);
+  const candidates = rows.filter((row) => {
+    const candidateName = normalizeCompanyNameForMatch(row.companyName);
+    const isSameName =
+      candidateName.includes(targetName) || targetName.includes(candidateName);
+    const isSameSchedule =
+      !row.subscriptionStart ||
+      !row.subscriptionEnd ||
+      (row.subscriptionStart === entry.subscriptionStart &&
+        row.subscriptionEnd === entry.subscriptionEnd);
+
+    return isSameName && isSameSchedule;
+  });
+
+  return candidates.find((row) => row.isFinalTerms) ?? candidates[0] ?? null;
+}
+
+async function fetchDartDemandStats(row: DartOfferingRow) {
+  const mainHtml = await fetchDartHtml(`/dsaf001/main.do?rcpNo=${row.rcpNo}`);
+  const dcmNo =
+    extractFirstMatch(mainHtml, /viewDoc\("[^"]+",\s*"(\d+)"/) ??
+    extractFirstMatch(mainHtml, /node\d+\['dcmNo']\s*=\s*"(\d+)"/);
+
+  if (!dcmNo) {
+    return null;
+  }
+
+  const viewerHtml = await fetchDartHtml(
+    `/report/viewer.do?rcpNo=${row.rcpNo}&dcmNo=${dcmNo}&eleId=0&offset=0&length=0&dtd=dart4.xsd`,
+  );
+
+  return parseDartDemandStats(viewerHtml);
+}
+
+function parseDartDemandStats(html: string): DartDemandStats | null {
+  const text = stripTags(html);
+  const stats = {
+    competitionRate: parseDartCompetitionRate(text),
+    lockupRate: parseDartLockupRate(text),
+  };
+
+  if (stats.competitionRate === null && stats.lockupRate === null) {
+    return null;
+  }
+
+  return stats;
+}
+
+function parseDartCompetitionRate(text: string) {
+  const priceDistributionIndex = text.indexOf("(나) 수요예측 신청가격 분포");
+  const searchEnd = priceDistributionIndex >= 0 ? priceDistributionIndex : text.length;
+  const searchStart = Math.max(0, searchEnd - 4_000);
+  const competitionIndex = text.indexOf("경쟁률", searchStart);
+
+  if (competitionIndex < 0) {
+    return null;
+  }
+
+  const footnoteIndex = text.indexOf("주1)", competitionIndex);
+  const competitionBlock = text.slice(
+    competitionIndex,
+    footnoteIndex > competitionIndex && footnoteIndex < searchEnd
+      ? footnoteIndex
+      : searchEnd,
+  );
+  const rates = [...competitionBlock.matchAll(/\d[\d,]*\.\d+/g)]
+    .map((matched) => parseNumber(matched[0]))
+    .filter((value): value is number => value !== null);
+
+  return rates.length > 0 ? rates[rates.length - 1] : null;
+}
+
+function parseDartLockupRate(text: string) {
+  const lockupIndex = text.indexOf("의무보유확약기간별 수요예측 참여내역");
+  if (lockupIndex < 0) {
+    return null;
+  }
+
+  const nextSectionIndex = text.indexOf("(라)", lockupIndex);
+  const lockupBlock = text.slice(
+    lockupIndex,
+    nextSectionIndex > lockupIndex ? nextSectionIndex : lockupIndex + 8_000,
+  );
+  const totalColumnIndex = lockupBlock.indexOf("구분 외국 기관투자자 합계");
+  const totalColumnBlock =
+    totalColumnIndex >= 0 ? lockupBlock.slice(totalColumnIndex) : lockupBlock;
+  const committedQuantity = [
+    "6개월 확약",
+    "3개월 확약",
+    "1개월 확약",
+    "15일 확약",
+  ].reduce(
+    (sum, label) => sum + (parseDartLockupQuantity(totalColumnBlock, label) ?? 0),
+    0,
+  );
+  const totalQuantity = parseDartLockupQuantity(totalColumnBlock, "계");
+
+  if (!committedQuantity || !totalQuantity) {
+    return null;
+  }
+
+  return Number(((committedQuantity / totalQuantity) * 100).toFixed(2));
+}
+
+function parseDartLockupQuantity(block: string, label: string) {
+  const numberGroup = String.raw`(?:-\s+-\s+-|[\d,]+\s+[\d,]+\s+[\d,]+)`;
+  const pattern = new RegExp(
+    `${escapeRegExp(label)}\\s+${numberGroup}\\s+${numberGroup}\\s+([\\d,]+)\\s+([\\d,]+)\\s+[\\d,]+`,
+  );
+  const matched = block.match(pattern);
+  return parseInteger(matched?.[2]);
+}
+
+function shouldFetchDartDemandStats(detail: SourceDetail | null) {
+  return !detail?.competitionRate || !detail?.lockupRate;
+}
+
+function mergeDartDemandStats(
+  detail: SourceDetail | null,
+  stats: DartDemandStats | null,
+) {
+  if (!stats) {
+    return detail;
+  }
+
+  const nextDetail = detail ?? createEmptySourceDetail();
+
+  return {
+    ...nextDetail,
+    competitionRate: stats.competitionRate ?? nextDetail.competitionRate,
+    lockupRate: stats.lockupRate ?? nextDetail.lockupRate,
+  };
+}
+
+function createEmptySourceDetail(): SourceDetail {
+  return {
+    companyCode: null,
+    market: null,
+    sector: null,
+    totalShares: null,
+    publicOfferingShares: null,
+    tradableShares: null,
+    tradableRate: null,
+    otcSellPrice: null,
+    otcBuyPrice: null,
+    refundDate: null,
+    listingDate: null,
+    leadManager: null,
+    competitionRate: null,
+    lockupRate: null,
+  };
+}
+
+function normalizeCompanyNameForMatch(value: string) {
+  return value
+    .replace(/\(주\)|주식회사|\s|\(구\.[^)]+\)|[㈜()（）.,·ㆍ-]/g, "")
+    .toLowerCase();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function mapWithConcurrency<Input, Output>(
@@ -657,6 +969,10 @@ function toUpsertRow(ipo: Ipo): IpoUpsertRow {
     offer_price_range_high: ipo.offerPriceRangeHigh,
     total_shares: ipo.totalShares,
     public_offering_shares: ipo.publicOfferingShares,
+    tradable_shares: ipo.tradableShares ?? null,
+    tradable_rate: ipo.tradableRate ?? null,
+    otc_sell_price: ipo.otcSellPrice ?? null,
+    otc_buy_price: ipo.otcBuyPrice ?? null,
     underwriters: ipo.underwriters,
     lead_manager: ipo.leadManager,
     subscription_competition_rate: ipo.subscriptionCompetitionRate ?? null,
@@ -686,41 +1002,59 @@ async function upsertIpos(rows: IpoUpsertRow[]) {
     },
   });
 
-  const { data, error } = await client
-    .from("ipos")
-    .upsert(rows, { onConflict: "slug" })
-    .select("slug");
+  const omittedColumns = new Set<keyof IpoUpsertRow>();
+  let activeRows: Partial<IpoUpsertRow>[] = rows;
 
-  if (isMissingSubscriptionCompetitionColumn(error)) {
-    const legacyRows = rows.map((row) => {
-      const legacyRow: Partial<IpoUpsertRow> = { ...row };
-      delete legacyRow.subscription_competition_rate;
-      return legacyRow;
-    });
-    const { data: retryData, error: retryError } = await client
+  for (let attempt = 0; attempt <= OPTIONAL_UPSERT_COLUMNS.length; attempt += 1) {
+    const { data, error } = await client
       .from("ipos")
-      .upsert(legacyRows, { onConflict: "slug" })
+      .upsert(activeRows, { onConflict: "slug" })
       .select("slug");
 
-    if (retryError) {
-      throw new Error(retryError.message);
+    if (!error) {
+      return data?.length ?? activeRows.length;
     }
 
-    return retryData?.length ?? legacyRows.length;
+    const missingColumn = getMissingOptionalColumn(error);
+    if (!missingColumn || omittedColumns.has(missingColumn)) {
+      throw new Error(error.message);
+    }
+
+    omittedColumns.add(missingColumn);
+    activeRows = rows.map((row) => omitColumns(row, omittedColumns));
   }
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data?.length ?? rows.length;
+  return 0;
 }
 
-function isMissingSubscriptionCompetitionColumn(error: { message?: string } | null) {
-  return Boolean(
-    error?.message?.includes("subscription_competition_rate") &&
-      error.message.includes("column"),
-  );
+const OPTIONAL_UPSERT_COLUMNS: Array<keyof IpoUpsertRow> = [
+  "subscription_competition_rate",
+  "tradable_shares",
+  "tradable_rate",
+  "otc_sell_price",
+  "otc_buy_price",
+];
+
+function getMissingOptionalColumn(error: { message?: string } | null) {
+  const message = error?.message ?? "";
+  if (!message.includes("column")) {
+    return null;
+  }
+
+  return OPTIONAL_UPSERT_COLUMNS.find((column) => message.includes(column)) ?? null;
+}
+
+function omitColumns(
+  row: IpoUpsertRow,
+  omittedColumns: Set<keyof IpoUpsertRow>,
+) {
+  const nextRow: Partial<IpoUpsertRow> = { ...row };
+
+  for (const column of omittedColumns) {
+    delete nextRow[column];
+  }
+
+  return nextRow;
 }
 
 async function collectListEntries(result: SyncResult) {
@@ -819,6 +1153,10 @@ function normalizeIpo(
     offerPriceRangeHigh: listEntry.offerPriceRangeHigh,
     totalShares: detail?.totalShares ?? null,
     publicOfferingShares: detail?.publicOfferingShares ?? null,
+    tradableShares: detail?.tradableShares ?? null,
+    tradableRate: detail?.tradableRate ?? null,
+    otcSellPrice: detail?.otcSellPrice ?? null,
+    otcBuyPrice: detail?.otcBuyPrice ?? null,
     underwriters: listEntry.underwriters,
     leadManager,
     subscriptionCompetitionRate: listEntry.subscriptionCompetitionRate,
@@ -879,6 +1217,13 @@ export async function syncIposFromPublicSources(
       return result;
     }
 
+    const dartOfferingRows = await collectDartOfferingRows().catch((error: unknown) => {
+      result.warnings.push(
+        `${DART_SOURCE_NAME} 발행공시 목록 수집에 실패했습니다: ${toErrorMessage(error)}`,
+      );
+      return [] as DartOfferingRow[];
+    });
+
     const normalizedItems = await mapWithConcurrency(
       listEntries,
       DETAIL_CONCURRENCY,
@@ -896,6 +1241,23 @@ export async function syncIposFromPublicSources(
               error,
             )}`,
           );
+        }
+
+        if (shouldFetchDartDemandStats(detail)) {
+          const dartOfferingRow = findDartOfferingRow(dartOfferingRows, entry);
+
+          if (dartOfferingRow) {
+            try {
+              const dartDemandStats = await fetchDartDemandStats(dartOfferingRow);
+              detail = mergeDartDemandStats(detail, dartDemandStats);
+            } catch (error) {
+              result.warnings.push(
+                `${entry.companyName} DART 수요예측 정보 수집에 실패했습니다: ${toErrorMessage(
+                  error,
+                )}`,
+              );
+            }
+          }
         }
 
         return normalizeIpo(entry, detail, todayIso);

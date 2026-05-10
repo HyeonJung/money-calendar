@@ -17,6 +17,10 @@ create table if not exists public.ipos (
   offer_price_range_high integer,
   total_shares bigint,
   public_offering_shares bigint,
+  tradable_shares bigint,
+  tradable_rate numeric(5, 2),
+  otc_sell_price integer,
+  otc_buy_price integer,
   underwriters text[] not null default '{}',
   lead_manager text not null default '',
   subscription_competition_rate numeric(10, 2),
@@ -39,6 +43,10 @@ create index if not exists ipos_listing_date_idx on public.ipos (listing_date de
 create index if not exists ipos_market_status_idx on public.ipos (market, status);
 
 alter table public.ipos add column if not exists subscription_competition_rate numeric(10, 2);
+alter table public.ipos add column if not exists tradable_shares bigint;
+alter table public.ipos add column if not exists tradable_rate numeric(5, 2);
+alter table public.ipos add column if not exists otc_sell_price integer;
+alter table public.ipos add column if not exists otc_buy_price integer;
 
 alter table public.ipos enable row level security;
 
@@ -51,6 +59,10 @@ using (true);
 
 comment on table public.ipos is '머니캘린더 공모주 일정용 샘플/운영 공모주 데이터 테이블';
 comment on column public.ipos.subscription_competition_rate is '일반 투자자 청약경쟁률. 공개 소스에 집계된 경우 동기화한다';
+comment on column public.ipos.tradable_shares is '상장일 기준 유통가능 주식수. 공개 원천의 공모후 유통가능 물량 표에서 수집한다';
+comment on column public.ipos.tradable_rate is '상장일 기준 유통가능 지분율. 공개 원천의 공모후 유통가능 물량 표에서 수집한다';
+comment on column public.ipos.otc_sell_price is '장외 매도 희망가격 참고값. 공개 원천의 팝니다 표 첫 가격을 사용한다';
+comment on column public.ipos.otc_buy_price is '장외 매수 희망가격 참고값. 공개 원천의 삽니다 표 첫 가격을 사용한다';
 comment on column public.ipos.description is '설명 텍스트. 샘플 데이터인 경우 예시 문구를 포함할 수 있음';
 
 -- Sample seed rows for local/dev preview only.

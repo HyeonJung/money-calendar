@@ -861,14 +861,19 @@ function buildIpoScoreReport(
   listedCurrentPrice?: number | null,
 ): IpoScoreReport {
   const baseOfferPrice = getBaseOfferPrice(ipo);
-  const estimatedOfferingAmount =
-    baseOfferPrice && ipo.publicOfferingShares
-      ? baseOfferPrice * ipo.publicOfferingShares
+  const tradableMarketValue =
+    baseOfferPrice && ipo.tradableShares
+      ? baseOfferPrice * ipo.tradableShares
+      : null;
+  const otcReferencePrice = getOtcReferencePrice(ipo);
+  const otcPremiumRate =
+    baseOfferPrice && otcReferencePrice
+      ? ((otcReferencePrice - baseOfferPrice) / baseOfferPrice) * 100
       : null;
   const pricePremiumRate =
     baseOfferPrice && listedCurrentPrice
       ? ((listedCurrentPrice - baseOfferPrice) / baseOfferPrice) * 100
-      : null;
+      : otcPremiumRate;
   const factors: IpoScoreFactor[] = [
     {
       key: "institution-competition",
@@ -891,13 +896,15 @@ function buildIpoScoreReport(
     {
       key: "offering-size",
       label: "유통가능 규모",
-      value: estimatedOfferingAmount
-        ? formatApproxWon(estimatedOfferingAmount)
+      value: tradableMarketValue
+        ? `${formatApproxWon(tradableMarketValue)}${
+            ipo.tradableRate ? ` (${formatRate(ipo.tradableRate, "%")})` : ""
+          }`
         : "미정",
-      score: scoreOfferingAmount(estimatedOfferingAmount),
+      score: scoreOfferingAmount(tradableMarketValue),
       maxScore: 10,
       criteria: "3,000억원 이상 0점, 200억원 이하 10점",
-      detail: "공모주식수와 기준 공모가로 추정",
+      detail: "상장일 기준 유통가능 물량과 기준 공모가로 추정",
     },
     {
       key: "price-premium",
@@ -905,13 +912,17 @@ function buildIpoScoreReport(
       value:
         listedCurrentPrice && pricePremiumRate !== null
           ? `${formatMoney(listedCurrentPrice)} (${formatSignedRate(pricePremiumRate)})`
+          : otcReferencePrice && pricePremiumRate !== null
+            ? `${formatOtcPriceRange(ipo)} (${formatSignedRate(pricePremiumRate)})`
           : "미확인",
       score: scorePricePremium(pricePremiumRate),
       maxScore: 6,
       criteria: "공모가 대비 +50% 이하는 -3점, +160% 이상 6점",
       detail: listedCurrentPrice
         ? "공모가 대비 현재가"
-        : "현재 연결된 장외가격 데이터 없음",
+        : otcReferencePrice
+          ? "장외 매수·매도 희망가격 참고값"
+          : "현재 연결된 장외가격 데이터 없음",
     },
   ];
   const totalScore = factors.reduce((sum, factor) => sum + (factor.score ?? 0), 0);
@@ -935,6 +946,18 @@ function buildIpoScoreReport(
 
 function getBaseOfferPrice(ipo: Ipo) {
   return ipo.confirmedOfferPrice ?? ipo.offerPriceRangeHigh ?? ipo.offerPriceRangeLow ?? null;
+}
+
+function getOtcReferencePrice(ipo: Ipo) {
+  const prices = [ipo.otcBuyPrice, ipo.otcSellPrice].filter(
+    (value): value is number => Boolean(value),
+  );
+
+  if (prices.length === 0) {
+    return null;
+  }
+
+  return Math.min(...prices);
 }
 
 function scoreInstitutionCompetition(value?: number | null) {
@@ -1142,6 +1165,17 @@ function formatApproxWon(value: number) {
   }
 
   return `약 ${value.toLocaleString("ko-KR")}원`;
+}
+
+function formatOtcPriceRange(ipo: Ipo) {
+  const buyPrice = ipo.otcBuyPrice ? formatMoney(ipo.otcBuyPrice) : null;
+  const sellPrice = ipo.otcSellPrice ? formatMoney(ipo.otcSellPrice) : null;
+
+  if (buyPrice && sellPrice) {
+    return `${buyPrice} - ${sellPrice}`;
+  }
+
+  return buyPrice ?? sellPrice ?? "미확인";
 }
 
 function getTodayIsoInSeoul() {

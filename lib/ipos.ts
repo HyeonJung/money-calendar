@@ -22,6 +22,10 @@ export type Ipo = {
   offerPriceRangeHigh: number | null;
   totalShares: number | null;
   publicOfferingShares: number | null;
+  tradableShares?: number | null;
+  tradableRate?: number | null;
+  otcSellPrice?: number | null;
+  otcBuyPrice?: number | null;
   underwriters: string[];
   leadManager: string;
   subscriptionCompetitionRate?: number | null;
@@ -51,6 +55,10 @@ type IpoRow = {
   offer_price_range_high: number | string | null;
   total_shares: number | string | null;
   public_offering_shares: number | string | null;
+  tradable_shares?: number | string | null;
+  tradable_rate?: number | string | null;
+  otc_sell_price?: number | string | null;
+  otc_buy_price?: number | string | null;
   underwriters: string[] | null;
   lead_manager: string | null;
   subscription_competition_rate?: number | string | null;
@@ -433,6 +441,10 @@ function mapRowToIpo(row: IpoRow): Ipo {
     offerPriceRangeHigh: toNumber(row.offer_price_range_high),
     totalShares: toNumber(row.total_shares),
     publicOfferingShares: toNumber(row.public_offering_shares),
+    tradableShares: toNumber(row.tradable_shares),
+    tradableRate: toNumber(row.tradable_rate),
+    otcSellPrice: toNumber(row.otc_sell_price),
+    otcBuyPrice: toNumber(row.otc_buy_price),
     underwriters: toStringArray(row.underwriters),
     leadManager: row.lead_manager ?? "",
     subscriptionCompetitionRate: toNumber(row.subscription_competition_rate),
