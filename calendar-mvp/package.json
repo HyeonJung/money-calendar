@@ -1,0 +1,16 @@
+{
+  "name": "calendar-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "web:dev": "npm --workspace apps/web run dev",
+    "web:build": "npm --workspace apps/web run build",
+    "web:lint": "npm --workspace apps/web run lint",
+    "api:test": "cd apps/api && ./gradlew test",
+    "api:build": "cd apps/api && ./gradlew build",
+    "compose:config": "docker compose -f infra/docker-compose.yml config"
+  }
+}

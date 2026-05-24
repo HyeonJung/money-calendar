@@ -1,0 +1,15 @@
+package com.example.calendar.common;
+
+public enum ErrorCode {
+    UNAUTHORIZED,
+    FORBIDDEN,
+    NOT_FOUND,
+    VALIDATION_ERROR,
+    CONFLICT,
+    READONLY_CALENDAR,
+    CALENDAR_MEMBER_NOT_FOUND,
+    ATTENDEE_NOT_FOUND,
+    ATTENDEE_LIMIT_EXCEEDED,
+    HOLIDAY_SYNC_FAILED,
+    INTERNAL_ERROR
+}
