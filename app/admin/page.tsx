@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   Activity,
-  AlertCircle,
   BadgePercent,
   Clock3,
   Database,
@@ -13,14 +12,13 @@ import {
   ImageOff,
   Layers3,
   LinkIcon,
-  LogIn,
   Pencil,
   Plus,
   RefreshCw,
   Trash2,
   WandSparkles,
 } from "lucide-react";
-import { getAdminAccess, type AdminAccess } from "@/lib/admin-auth";
+import { getPublicAdminAccess, type AdminAccess } from "@/lib/admin-auth";
 import { createHotDealInputFromProductUrl } from "@/lib/hotdeal-link-parser";
 import {
   createManualHotDeal,
@@ -55,23 +53,7 @@ export const revalidate = 0;
 
 export default async function AdminPage({ searchParams }: AdminPageProps) {
   const params = searchParams ? await searchParams : {};
-  const access = await getAdminAccess();
-
-  if (access.state === "anonymous" || access.state === "missing-env") {
-    return (
-      <AdminPageShell access={access}>
-        <LoginRequired access={access} />
-      </AdminPageShell>
-    );
-  }
-
-  if (access.state === "setup-required" || access.state === "forbidden") {
-    return (
-      <AdminPageShell access={access}>
-        <AccessBlocked access={access} />
-      </AdminPageShell>
-    );
-  }
+  const access = getPublicAdminAccess();
 
   const [hotDeals, hotDealMetrics, syncDashboard] = await Promise.all([
     getAdminHotDeals(100),
@@ -101,11 +83,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
 async function createHotDealAction(formData: FormData) {
   "use server";
 
-  const access = await getAdminAccess();
-  if (access.state !== "authorized" || !access.canRunSync) {
-    redirect("/admin?hotdeal=forbidden");
-  }
-
+  const access = getPublicAdminAccess();
   const result = await createManualHotDeal(readHotDealForm(formData), access.user.email);
 
   revalidatePath("/admin");
@@ -116,11 +94,7 @@ async function createHotDealAction(formData: FormData) {
 async function createHotDealFromUrlAction(formData: FormData) {
   "use server";
 
-  const access = await getAdminAccess();
-  if (access.state !== "authorized" || !access.canRunSync) {
-    redirect("/admin?hotdeal=forbidden");
-  }
-
+  const access = getPublicAdminAccess();
   const parsed = await createHotDealInputFromProductUrl(String(formData.get("productUrl") ?? ""));
 
   if (!parsed.ok) {
@@ -144,11 +118,7 @@ async function createHotDealFromUrlAction(formData: FormData) {
 async function updateHotDealAction(formData: FormData) {
   "use server";
 
-  const access = await getAdminAccess();
-  if (access.state !== "authorized" || !access.canRunSync) {
-    redirect("/admin?hotdeal=forbidden");
-  }
-
+  const access = getPublicAdminAccess();
   const id = String(formData.get("id") ?? "");
   if (!id) {
     redirect("/admin?hotdeal=failed");
@@ -164,11 +134,6 @@ async function updateHotDealAction(formData: FormData) {
 async function deleteHotDealAction(formData: FormData) {
   "use server";
 
-  const access = await getAdminAccess();
-  if (access.state !== "authorized" || !access.canRunSync) {
-    redirect("/admin?hotdeal=forbidden");
-  }
-
   const id = String(formData.get("id") ?? "");
   if (!id) {
     redirect("/admin?hotdeal=failed");
@@ -183,11 +148,6 @@ async function deleteHotDealAction(formData: FormData) {
 
 async function expireHotDealsAction() {
   "use server";
-
-  const access = await getAdminAccess();
-  if (access.state !== "authorized" || !access.canRunSync) {
-    redirect("/admin?hotdeal=forbidden");
-  }
 
   const result = await expireOldHotDeals();
 
@@ -205,14 +165,6 @@ function AdminPageShell({
 }) {
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {access.user ? (
-        // Existing Supabase sessions are backfilled into the app admin session
-        // cookie so Server Actions can keep authorization stable.
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/auth/session/refresh" alt="" aria-hidden="true" className="hidden" />
-        </>
-      ) : null}
       <div className="mb-6 flex flex-col gap-3 border-b border-neutral-200 pb-5 dark:border-neutral-800 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
@@ -247,63 +199,6 @@ function AdminPageShell({
       </div>
       {children}
     </main>
-  );
-}
-
-function LoginRequired({
-  access,
-}: {
-  access: Extract<AdminAccess, { state: "anonymous" | "missing-env" }>;
-}) {
-  return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none">
-      <div className="flex items-start gap-3">
-        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-          <LogIn size={20} aria-hidden="true" />
-        </span>
-        <div>
-          <h2 className="text-lg font-semibold text-neutral-950 dark:text-white">
-            Google 로그인이 필요합니다
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-neutral-600 dark:text-neutral-400">
-            {access.message}
-          </p>
-          {access.state === "anonymous" ? (
-            <Link
-              href={`/auth/login?next=${encodeURIComponent("/admin")}`}
-              className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700"
-            >
-              <LogIn size={16} aria-hidden="true" />
-              Google로 로그인
-            </Link>
-          ) : null}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function AccessBlocked({
-  access,
-}: {
-  access: Extract<AdminAccess, { state: "setup-required" | "forbidden" }>;
-}) {
-  return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none">
-      <div className="flex items-start gap-3">
-        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
-          <AlertCircle size={20} aria-hidden="true" />
-        </span>
-        <div>
-          <h2 className="text-lg font-semibold text-neutral-950 dark:text-white">
-            접근할 수 없습니다
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-neutral-600 dark:text-neutral-400">
-            {access.message}
-          </p>
-        </div>
-      </div>
-    </section>
   );
 }
 

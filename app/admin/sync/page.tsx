@@ -8,17 +8,10 @@ import {
   CheckCircle2,
   Clock3,
   Database,
-  LogIn,
   Play,
   RefreshCw,
-  ShieldAlert,
 } from "lucide-react";
-import {
-  createAdminActionToken,
-  getAdminAccess,
-  getAdminAccessFromActionToken,
-  type AdminAccess,
-} from "@/lib/admin-auth";
+import { getPublicAdminAccess, type AdminAccess } from "@/lib/admin-auth";
 import { syncHotDealsFromPublicSources } from "@/lib/hotdeal-sync";
 import { syncIposFromPublicSources } from "@/lib/ipo-sync";
 import {
@@ -46,23 +39,7 @@ export const revalidate = 0;
 
 export default async function AdminSyncPage({ searchParams }: AdminSyncPageProps) {
   const params = searchParams ? await searchParams : {};
-  const access = await getAdminAccess();
-
-  if (access.state === "anonymous" || access.state === "missing-env") {
-    return (
-      <AdminShell access={access}>
-        <LoginRequired access={access} authNotice={getParam(params, "auth")} />
-      </AdminShell>
-    );
-  }
-
-  if (access.state === "setup-required" || access.state === "forbidden") {
-    return (
-      <AdminShell access={access}>
-        <AccessBlocked access={access} authNotice={getParam(params, "auth")} />
-      </AdminShell>
-    );
-  }
+  const access = getPublicAdminAccess();
 
   const dashboard = await getSyncRunDashboard(30);
 
@@ -90,26 +67,9 @@ export default async function AdminSyncPage({ searchParams }: AdminSyncPageProps
 async function runManualSyncAction(formData: FormData) {
   "use server";
 
-  let access = await getAdminAccess();
+  const access = getPublicAdminAccess();
   const dryRun = formData.get("dryRun") === "1";
   const source = readManualSyncSource(formData.get("source"));
-  const actionToken = String(formData.get("adminActionToken") ?? "");
-
-  if (access.state !== "authorized") {
-    access = await getAdminAccessFromActionToken(actionToken);
-  }
-
-  if (access.state !== "authorized") {
-    redirect(
-      `/admin/sync?run=${getManualSyncDeniedCode(access)}&dryRun=${
-        dryRun ? "1" : "0"
-      }&source=${source}`,
-    );
-  }
-
-  if (!access.canRunSync) {
-    redirect(`/admin/sync?run=viewer-forbidden&dryRun=${dryRun ? "1" : "0"}&source=${source}`);
-  }
 
   const startedAt = new Date();
   let redirectPath = `/admin/sync?run=failed&dryRun=${dryRun ? "1" : "0"}&source=${source}`;
@@ -167,14 +127,6 @@ function AdminShell({
 }) {
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {access.user ? (
-        // Existing Supabase sessions are backfilled into the app admin session
-        // cookie so Server Actions can keep authorization stable.
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/auth/session/refresh" alt="" aria-hidden="true" className="hidden" />
-        </>
-      ) : null}
       <div className="mb-6 flex flex-col gap-3 border-b border-neutral-200 pb-5 dark:border-neutral-800 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
@@ -201,97 +153,10 @@ function AdminShell({
               {access.role}
             </span>
           ) : null}
-          {access.user ? (
-            <Link
-              href="/auth/logout"
-              className="inline-flex h-9 items-center rounded-md border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-neutral-50 hover:text-neutral-950 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-white"
-            >
-              로그아웃
-            </Link>
-          ) : null}
         </div>
       </div>
       {children}
     </main>
-  );
-}
-
-function LoginRequired({
-  access,
-  authNotice,
-}: {
-  access: Extract<AdminAccess, { state: "anonymous" | "missing-env" }>;
-  authNotice?: string;
-}) {
-  return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none">
-      <div className="flex items-start gap-3">
-        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-          <LogIn size={20} aria-hidden="true" />
-        </span>
-        <div>
-          <h2 className="text-lg font-semibold text-neutral-950 dark:text-white">
-            Google 로그인이 필요합니다
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-neutral-600 dark:text-neutral-400">
-            {access.message}
-          </p>
-          {authNotice ? <AuthNotice value={authNotice} /> : null}
-          {access.state === "missing-env" ? (
-            <SetupHint />
-          ) : (
-            <Link
-              href={`/auth/login?next=${encodeURIComponent("/admin/sync")}`}
-              className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700"
-            >
-              <LogIn size={16} aria-hidden="true" />
-              Google로 로그인
-            </Link>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function AccessBlocked({
-  access,
-  authNotice,
-}: {
-  access: Extract<AdminAccess, { state: "setup-required" | "forbidden" }>;
-  authNotice?: string;
-}) {
-  const isSetupIssue = access.state === "setup-required";
-
-  return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none">
-      <div className="flex items-start gap-3">
-        <span
-          className={[
-            "inline-flex size-10 shrink-0 items-center justify-center rounded-lg",
-            isSetupIssue
-              ? "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
-              : "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300",
-          ].join(" ")}
-        >
-          {isSetupIssue ? (
-            <ShieldAlert size={20} aria-hidden="true" />
-          ) : (
-            <AlertCircle size={20} aria-hidden="true" />
-          )}
-        </span>
-        <div>
-          <h2 className="text-lg font-semibold text-neutral-950 dark:text-white">
-            {isSetupIssue ? "운영자 권한 설정 필요" : "접근 권한 없음"}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-neutral-600 dark:text-neutral-400">
-            {access.message}
-          </p>
-          {authNotice ? <AuthNotice value={authNotice} /> : null}
-          {isSetupIssue ? <SetupHint /> : null}
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -359,8 +224,6 @@ function SyncActionPanel({
 }: {
   access: Extract<AdminAccess, { state: "authorized" }>;
 }) {
-  const actionToken = createAdminActionToken(access.user.email);
-
   return (
     <section className="mt-5 rounded-lg border border-neutral-200 bg-white p-5 shadow-sm shadow-black/5 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-none">
       <div>
@@ -378,14 +241,12 @@ function SyncActionPanel({
             title="공모주 동기화"
             description="공모주 일정, 상세 정보, 상태를 공개 소스 기준으로 갱신합니다."
             canRunSync={access.canRunSync}
-            actionToken={actionToken}
           />
           <ManualSyncCard
             source="hotdeals"
             title="핫딜 동기화"
             description="등록 1시간 이내 핫딜만 수집하고 같은 상품 주소는 건너뜁니다."
             canRunSync={access.canRunSync}
-            actionToken={actionToken}
           />
         </div>
       </div>
@@ -398,13 +259,11 @@ function ManualSyncCard({
   title,
   description,
   canRunSync,
-  actionToken,
 }: {
   source: ManualSyncSource;
   title: string;
   description: string;
   canRunSync: boolean;
-  actionToken: string;
 }) {
   return (
     <article className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900/60">
@@ -423,7 +282,6 @@ function ManualSyncCard({
         <form action={runManualSyncAction}>
           <input type="hidden" name="source" value={source} />
           <input type="hidden" name="dryRun" value="1" />
-          <input type="hidden" name="adminActionToken" value={actionToken} />
           <button
             type="submit"
             disabled={!canRunSync}
@@ -436,7 +294,6 @@ function ManualSyncCard({
         <form action={runManualSyncAction}>
           <input type="hidden" name="source" value={source} />
           <input type="hidden" name="dryRun" value="0" />
-          <input type="hidden" name="adminActionToken" value={actionToken} />
           <button
             type="submit"
             disabled={!canRunSync}
@@ -680,40 +537,6 @@ function ActionNotice({
   );
 }
 
-function AuthNotice({ value }: { value: string }) {
-  const text = {
-    "missing-env": "Supabase 인증 환경변수를 확인해 주세요.",
-    "login-error": "Google 로그인 URL을 만들지 못했습니다.",
-    "missing-code": "OAuth callback code가 없습니다.",
-    "callback-error": "Google 로그인 콜백 처리에 실패했습니다.",
-    "signed-in": "로그인되었습니다.",
-    "signed-out": "로그아웃되었습니다.",
-  }[value];
-
-  if (!text) {
-    return null;
-  }
-
-  return (
-    <p className="mt-3 rounded-md bg-neutral-50 px-3 py-2 text-sm font-medium text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">
-      {text}
-    </p>
-  );
-}
-
-function SetupHint() {
-  return (
-    <div className="mt-4 rounded-md bg-neutral-50 p-4 text-sm leading-6 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">
-      <p className="font-semibold text-neutral-900 dark:text-neutral-100">필요 설정</p>
-      <p className="mt-1">
-        Supabase Google provider, `NEXT_PUBLIC_SUPABASE_URL`,
-        `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
-        `admin_users` 테이블을 확인해 주세요.
-      </p>
-    </div>
-  );
-}
-
 function getParam(
   params: Record<string, string | string[] | undefined>,
   key: string,
@@ -740,15 +563,6 @@ function getTriggerTypeLabel(type: SyncRunTriggerType) {
 
 function readManualSyncSource(value: FormDataEntryValue | string | null | undefined): ManualSyncSource {
   return value === "hotdeals" ? "hotdeals" : "ipos";
-}
-
-function getManualSyncDeniedCode(access: Exclude<AdminAccess, { state: "authorized" }>) {
-  return ({
-    anonymous: "login-required",
-    "missing-env": "setup-required",
-    "setup-required": "setup-required",
-    forbidden: "forbidden",
-  })[access.state];
 }
 
 function getManualSyncSourceLabel(source: ManualSyncSource) {

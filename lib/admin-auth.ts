@@ -58,6 +58,17 @@ type AdminUserRow = {
 const ADMIN_SESSION_COOKIE = "money_calendar_admin_session";
 const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 const ADMIN_ACTION_TOKEN_MAX_AGE_SECONDS = 60 * 10;
+const PUBLIC_ADMIN_EMAIL = "public-admin@money-calendar.local";
+
+export function getPublicAdminAccess(): Extract<AdminAccess, { state: "authorized" }> {
+  return {
+    state: "authorized",
+    message: "공개 운영자 모드입니다.",
+    user: { email: PUBLIC_ADMIN_EMAIL },
+    role: "admin",
+    canRunSync: true,
+  };
+}
 
 export async function getAdminAccess(): Promise<AdminAccess> {
   const authClient = await createSupabaseAuthServerClient();
